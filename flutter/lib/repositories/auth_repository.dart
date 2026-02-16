@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:rxdart/rxdart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -79,14 +80,36 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
+    final url = '${ApiConfig.baseUrl}login';
+    final escapedEmail = escapeStringForJson(email);
+    final escapedPassword = escapeStringForJson(password);
+    final requestBody = jsonEncode({
+      'email': escapedEmail,
+      'password': escapedPassword,
+    });
+
+    // ── DEBUG: Login diagnostics ──────────────────────────
+    debugPrint('── LOGIN REQUEST ──');
+    debugPrint('URL: $url');
+    debugPrint('Email (raw): "$email"');
+    debugPrint('Email (escaped): "$escapedEmail"');
+    debugPrint('Password length: ${password.length}');
+    debugPrint('Password (raw): "$password"');
+    debugPrint('Password (escaped): "$escapedPassword"');
+    debugPrint('Request body: $requestBody');
+    // ── END DEBUG ─────────────────────────────────────────
+
     final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}applogin'),
+      Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'email': escapeStringForJson(email),
-        'password': escapeStringForJson(password),
-      }),
+      body: requestBody,
     );
+
+    // ── DEBUG: Login response ─────────────────────────────
+    debugPrint('── LOGIN RESPONSE ──');
+    debugPrint('Status code: ${response.statusCode}');
+    debugPrint('Body: ${response.body}');
+    // ── END DEBUG ─────────────────────────────────────────
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final userStruct = UserStruct.fromJson(data);

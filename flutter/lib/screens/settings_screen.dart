@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
-import '../theme/app_palettes.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_theme_tokens.dart';
 import '../theme/app_typography.dart';
@@ -14,7 +13,6 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.tokens;
-    final currentVariant = ref.watch(themeVariantProvider);
     final currentBrightness = ref.watch(brightnessModeProvider);
 
     return Scaffold(
@@ -23,8 +21,6 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           // Appearance section
           _buildSectionHeader('Appearance', tokens),
-          _buildThemeSelector(context, ref, currentVariant, tokens),
-          SizedBox(height: tokens.spacingLg),
           _buildBrightnessSelector(context, ref, currentBrightness, tokens),
 
           // Account section
@@ -44,60 +40,6 @@ class SettingsScreen extends ConsumerWidget {
       padding: EdgeInsets.fromLTRB(
           tokens.spacingLg, tokens.spacingXl, tokens.spacingLg, tokens.spacingSm),
       child: Text(title, style: AppTypography.titleMedium),
-    );
-  }
-
-  Widget _buildThemeSelector(BuildContext context, WidgetRef ref,
-      ThemeVariant currentVariant, AppThemeTokens tokens) {
-    final brightness = Theme.of(context).brightness;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: tokens.spacingLg),
-      child: Wrap(
-        spacing: tokens.spacingSm,
-        runSpacing: tokens.spacingSm,
-        children: ThemeVariant.values.map((variant) {
-          final isSelected = variant == currentVariant;
-          final previewColors =
-              AppPalettes.getPreviewColors(variant, brightness);
-
-          return GestureDetector(
-            onTap: () {
-              ref.read(themeVariantProvider.notifier).set(variant);
-            },
-            child: Container(
-              padding: EdgeInsets.all(tokens.spacingSm),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isSelected
-                      ? context.colors.primary
-                      : context.colors.outline,
-                  width: isSelected ? 2 : 1,
-                ),
-                borderRadius: BorderRadius.circular(tokens.radiusMd),
-              ),
-              child: Column(
-                children: [
-                  Stack(
-                    children: [
-                      CircleAvatar(
-                          radius: 16, backgroundColor: previewColors[0]),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: CircleAvatar(
-                            radius: 10, backgroundColor: previewColors[1]),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: tokens.spacingXs),
-                  Text(variant.displayName, style: AppTypography.labelSmall),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
     );
   }
 
