@@ -123,42 +123,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildDrawer(
       BuildContext context, ColorScheme colors, AppThemeTokens tokens) {
-    final authUser = ref.watch(authStateProvider);
-
     return Drawer(
       child: Column(
         children: [
-          // Profile header
-          authUser.when(
-            data: (user) => DrawerHeader(
-              decoration: BoxDecoration(color: colors.primary),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    child: Text(
-                      user.uid?.characters.first.toUpperCase() ?? '?',
-                      style:
-                          const TextStyle(fontSize: 24, color: Colors.white),
-                    ),
-                  ),
-                  SizedBox(height: tokens.spacingSm),
-                  Text(user.uid ?? 'Guest',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-            loading: () => const DrawerHeader(
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (error, stackTrace) => const SizedBox.shrink(),
-          ),
+          SizedBox(height: MediaQuery.of(context).padding.top + tokens.spacingLg),
 
           // Menu items
           ListTile(

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
-import '../theme/app_theme.dart';
 import '../theme/app_theme_tokens.dart';
 import '../theme/app_typography.dart';
 import '../widgets/common/widgets.dart';
@@ -26,10 +24,6 @@ class SettingsScreen extends ConsumerWidget {
           // Appearance section
           _buildSectionHeader('Appearance', tokens),
           _buildBrightnessSelector(context, ref, currentBrightness, tokens),
-
-          // Account section
-          _buildSectionHeader('Account', tokens),
-          _buildAccountSection(context, ref),
 
           // About section
           _buildSectionHeader('About', tokens),
@@ -73,42 +67,6 @@ class SettingsScreen extends ConsumerWidget {
         },
       ),
     );
-  }
-
-  Widget _buildAccountSection(BuildContext context, WidgetRef ref) {
-    return Column(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('Sign Out'),
-          onTap: () => _showSignOutDialog(context, ref),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _showSignOutDialog(BuildContext context, WidgetRef ref) async {
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sign Out?'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Sign Out',
-                style: TextStyle(color: context.colors.error)),
-          ),
-        ],
-      ),
-    );
-
-    if (proceed != true || !context.mounted) return;
-
-    await ref.read(authRepositoryProvider).signOut();
   }
 
   Widget _buildAboutSection() {
