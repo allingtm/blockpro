@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_theme_tokens.dart';
+import '../widgets/common/widgets.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final int initialTab;
@@ -43,6 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           icon: const Icon(Icons.menu),
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
+        actions: const [OfflineIndicator()],
       ),
       drawer: _buildDrawer(context, colors, tokens),
       body: IndexedStack(

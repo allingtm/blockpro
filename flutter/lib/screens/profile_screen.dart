@@ -4,6 +4,7 @@ import '../providers/user_profile_provider.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_theme_tokens.dart';
 import '../theme/app_typography.dart';
+import '../widgets/common/widgets.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -15,7 +16,10 @@ class ProfileScreen extends ConsumerWidget {
     final profileAsync = ref.watch(userProfileNotifierProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: const [OfflineIndicator()],
+      ),
       body: profileAsync.when(
         data: (profile) {
           if (profile == null) {

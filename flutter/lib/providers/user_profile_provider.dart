@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_profile.dart';
 import '../repositories/api_repository.dart';
 import 'auth_provider.dart';
+import 'connectivity_provider.dart';
 
 // FutureProvider — one-shot fetch, auto-disposes, simple reads
 final userProfileProvider = FutureProvider<UserProfile?>((ref) async {
@@ -52,5 +53,6 @@ final userProfileNotifierProvider =
 // ── ApiRepository provider ──────────────────────────────
 final apiRepositoryProvider = Provider<ApiRepository>((ref) {
   final authRepo = ref.watch(authRepositoryProvider);
-  return ApiRepository(authRepo);
+  final connectivityService = ref.watch(connectivityServiceProvider);
+  return ApiRepository(authRepo, connectivityService);
 });

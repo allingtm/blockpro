@@ -54,6 +54,10 @@ class MainApp extends ConsumerWidget {
         themeAnimationDuration: const Duration(milliseconds: 300),
         themeAnimationCurve: Curves.easeInOut,
         routerConfig: router,
+        builder: (context, child) => GestureDetector(
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: child,
+        ),
         debugShowCheckedModeBanner: false,
       ),
     );

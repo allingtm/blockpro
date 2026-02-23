@@ -24,6 +24,9 @@ dependencies:
   # HTTP & API
   http: ^1.2.0
 
+  # Connectivity detection
+  connectivity_plus: ^6.1.0
+
   # Reactive streams
   rxdart: ^0.28.0
 
@@ -48,6 +51,7 @@ flutter:
 
   assets:
     - .env
+    - assets/images/app_launcher_icon.png
 
 flutter_launcher_icons:
   android: "ic_launcher"

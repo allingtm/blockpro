@@ -59,31 +59,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(tokens.spacing2xl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Welcome Back', style: AppTypography.displayLarge),
-              SizedBox(height: tokens.spacing3xl),
-              AppTextField.email(
-                controller: _emailController,
-              ),
-              SizedBox(height: tokens.spacingLg),
-              AppTextField.password(
-                controller: _passwordController,
-              ),
-              SizedBox(height: tokens.spacingXl),
-              if (_error != null) ...[
-                Text(_error!, style: TextStyle(color: colors.error)),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(tokens.spacing2xl),
+            child: Column(
+              children: [
+                Text('Welcome Back', style: AppTypography.displayLarge),
+                SizedBox(height: tokens.spacing3xl),
+                AppTextField.email(
+                  controller: _emailController,
+                ),
                 SizedBox(height: tokens.spacingLg),
+                AppTextField.password(
+                  controller: _passwordController,
+                ),
+                SizedBox(height: tokens.spacingXl),
+                if (_error != null) ...[
+                  Text(_error!, style: TextStyle(color: colors.error)),
+                  SizedBox(height: tokens.spacingLg),
+                ],
+                AppButton(
+                  text: 'Sign In',
+                  onPressed: _handleLogin,
+                  isLoading: _isLoading,
+                ),
               ],
-              AppButton(
-                text: 'Sign In',
-                onPressed: _handleLogin,
-                isLoading: _isLoading,
-              ),
-            ],
+            ),
           ),
         ),
       ),

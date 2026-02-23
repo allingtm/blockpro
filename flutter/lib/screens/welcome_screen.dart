@@ -15,32 +15,33 @@ class WelcomeScreen extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(tokens.spacing2xl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.apartment_rounded,
-                size: tokens.icon2xl,
-                color: colors.primary,
-              ),
-              SizedBox(height: tokens.spacing3xl),
-              Text('BlockPro', style: AppTypography.displayLarge),
-              SizedBox(height: tokens.spacingMd),
-              Text(
-                'Building management made simple',
-                style: AppTypography.bodyLarge.copyWith(
-                  color: colors.onSurfaceVariant,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(tokens.spacing2xl),
+            child: Column(
+              children: [
+                Image.asset(
+                  'assets/images/app_launcher_icon.png',
+                  width: tokens.icon2xl,
+                  height: tokens.icon2xl,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: tokens.spacing4xl),
-              AppButton(
-                text: 'Sign In',
-                onPressed: () => context.go('/login'),
-              ),
-            ],
+                SizedBox(height: tokens.spacing3xl),
+                Text('BlockPro', style: AppTypography.displayLarge),
+                SizedBox(height: tokens.spacingMd),
+                Text(
+                  'Building management made simple',
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: tokens.spacing4xl),
+                AppButton(
+                  text: 'Sign In',
+                  onPressed: () => context.go('/login'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

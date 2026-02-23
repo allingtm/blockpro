@@ -6,6 +6,7 @@ import '../providers/theme_provider.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_theme_tokens.dart';
 import '../theme/app_typography.dart';
+import '../widgets/common/widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -16,7 +17,10 @@ class SettingsScreen extends ConsumerWidget {
     final currentBrightness = ref.watch(brightnessModeProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        actions: const [OfflineIndicator()],
+      ),
       body: ListView(
         children: [
           // Appearance section
