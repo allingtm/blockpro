@@ -17,6 +17,9 @@ class AuthRepository {
   String? _uid;
   UserStruct? _userData;
 
+  /// Optional callback invoked on sign-out (e.g. to wipe SQLite cache).
+  Future<void> Function()? onSignOut;
+
   // ── Reactive auth stream ──────────────────────────────
   final _authUserSubject = BehaviorSubject<BubbleAuthUser>.seeded(
     BubbleAuthUser(loggedIn: false),
@@ -193,7 +196,12 @@ class AuthRepository {
 
     await _persistAuthData();
 
+    // Emit logout immediately so the UI navigates away without waiting
+    // for the DB wipe (which can be slow with large datasets).
     _authUserSubject.add(BubbleAuthUser(loggedIn: false));
+
+    // Fire-and-forget: wipe cached data in the background.
+    onSignOut?.call();
   }
 
   /// Check if the current token is expired.

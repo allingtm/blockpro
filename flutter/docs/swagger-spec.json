@@ -1,0 +1,1355 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "flutterflowtest",
+        "version": "1.0.0",
+        "contact": {
+            "email": "flutterflowtest-no-reply@bubbleapps.io"
+        }
+    },
+    "host": "flutterflowtest.bubbleapps.io",
+    "basePath": "/api/1.1",
+    "schemes": [
+        "https"
+    ],
+    "consumes": [
+        "application/json"
+    ],
+    "paths": {
+        "/wf/upload-image": {
+            "post": {
+                "description": "Triggers the workflow upload-image",
+                "parameters": [
+                    {
+                        "name": "upload-image request body",
+                        "in": "body",
+                        "description": "Body of the POST request",
+                        "schema": {
+                            "$ref": "#/definitions/upload-imageBody"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "response": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "string"
+                                        },
+                                        "image_url": {
+                                            "type": "string"
+                                        },
+                                        "image_id": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/add-colour": {
+            "post": {
+                "description": "Triggers the workflow add-colour",
+                "parameters": [
+                    {
+                        "name": "add-colour request body",
+                        "in": "body",
+                        "description": "Body of the POST request",
+                        "schema": {
+                            "$ref": "#/definitions/add-colourBody"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "response": {
+                                    "type": "object",
+                                    "properties": {}
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/completed-inspection": {
+            "post": {
+                "description": "Triggers the workflow completed-inspection",
+                "parameters": [
+                    {
+                        "name": "completed-inspection request body",
+                        "in": "body",
+                        "description": "Body of the POST request",
+                        "schema": {
+                            "$ref": "#/definitions/completed-inspectionBody"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "response": {
+                                    "type": "object",
+                                    "properties": {}
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/fetchbuildings": {
+            "get": {
+                "description": "Triggers the workflow fetchbuildings",
+                "parameters": [],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/fetchassets": {
+            "get": {
+                "description": "Triggers the workflow fetchassets",
+                "parameters": [
+                    {
+                        "name": "block_id",
+                        "in": "query",
+                        "description": "Query parameter block_id",
+                        "required": true,
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/fetchquestions": {
+            "get": {
+                "description": "Triggers the workflow fetchquestions",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "query",
+                        "description": "Query parameter asset_id",
+                        "required": true,
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/fetchbuilding": {
+            "get": {
+                "description": "Triggers the workflow fetchbuilding",
+                "parameters": [
+                    {
+                        "name": "building_id",
+                        "in": "query",
+                        "description": "Query parameter building_id",
+                        "required": true,
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/login": {
+            "post": {
+                "description": "Triggers the workflow login",
+                "parameters": [
+                    {
+                        "name": "login request body",
+                        "in": "body",
+                        "description": "Body of the POST request",
+                        "schema": {
+                            "$ref": "#/definitions/loginBody"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "response": {
+                                    "type": "object",
+                                    "properties": {
+                                        "user_id": {
+                                            "type": "string"
+                                        },
+                                        "token": {
+                                            "type": "string"
+                                        },
+                                        "expires": {
+                                            "type": "number",
+                                            "format": "float"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/wf/fetchassets-old": {
+            "get": {
+                "description": "Triggers the workflow fetchassets-old",
+                "parameters": [
+                    {
+                        "name": "block_id",
+                        "in": "query",
+                        "description": "Query parameter block_id",
+                        "required": true,
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "response": {
+                                    "type": "object",
+                                    "properties": {
+                                        "assets": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wf/fetchchecklist": {
+            "get": {
+                "description": "Triggers the workflow fetchchecklist",
+                "parameters": [
+                    {
+                        "name": "asset_id",
+                        "in": "query",
+                        "description": "Query parameter asset_id",
+                        "required": true,
+                        "type": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "tags": [
+                    "Workflow"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow response",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "response": {
+                                    "type": "object",
+                                    "properties": {
+                                        "checklist": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Workflow failure",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Outcome of the workflow"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the workflow"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Wrong method",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal bug. Please file a bug report at bubble.io/support/report with the request that triggers this bug",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string",
+                                    "description": "Error code"
+                                },
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error message for the operation"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "upload-imageBody": {
+            "type": "object",
+            "properties": {},
+            "required": [
+                "_wf_request_data"
+            ]
+        },
+        "add-colourBody": {
+            "type": "object",
+            "properties": {
+                "User": {
+                    "type": "string",
+                    "description": "user ('user' represented by a unique ID)"
+                },
+                "Colour": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "User",
+                "Colour"
+            ]
+        },
+        "completed-inspectionBody": {
+            "type": "object",
+            "properties": {},
+            "required": [
+                "_wf_request_data"
+            ]
+        },
+        "loginBody": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "email",
+                "password"
+            ]
+        }
+    },
+    "tags": [
+        {
+            "name": "Workflow",
+            "description": "Use this to trigger a workflow"
+        },
+        {
+            "name": "Data",
+            "description": "Use this to fetch, modify and delete data"
+        }
+    ],
+    "securityDefinitions": {
+        "api_token": {
+            "type": "apiKey",
+            "name": "api_token",
+            "in": "query"
+        }
+    },
+    "security": [
+        {
+            "api_token": []
+        }
+    ]
+}

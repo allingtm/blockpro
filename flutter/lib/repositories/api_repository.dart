@@ -1,9 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
+import '../providers/auth_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../services/connectivity_service.dart';
 import 'auth_repository.dart';
+
+final apiRepositoryProvider = Provider<ApiRepository>((ref) {
+  final authRepo = ref.watch(authRepositoryProvider);
+  final connectivityService = ref.watch(connectivityServiceProvider);
+  return ApiRepository(authRepo, connectivityService);
+});
 
 class ApiRepository {
   final AuthRepository _authRepo;
@@ -32,6 +41,37 @@ class ApiRepository {
 
       _connectivityService.reportApiSuccess();
       return jsonDecode(response.body) as Map<String, dynamic>;
+    } on SocketException {
+      _connectivityService.reportApiFailure();
+      rethrow;
+    } on http.ClientException {
+      _connectivityService.reportApiFailure();
+      rethrow;
+    }
+  }
+
+  /// Make an authenticated GET request that may return any JSON type
+  /// (array or object). Use this for Bubble endpoints that return a raw list.
+  Future<dynamic> authenticatedGetRaw(String endpoint,
+      {Map<String, String>? queryParams}) async {
+    final token = _authRepo.authenticationToken;
+    if (token == null) throw Exception('Not authenticated');
+
+    final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint')
+        .replace(queryParameters: queryParams);
+
+    try {
+      final response = await http.get(uri, headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      });
+
+      if (response.statusCode != 200) {
+        throw Exception('API error: ${response.statusCode}');
+      }
+
+      _connectivityService.reportApiSuccess();
+      return jsonDecode(response.body);
     } on SocketException {
       _connectivityService.reportApiFailure();
       rethrow;

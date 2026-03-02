@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
+import 'database/database.dart';
 import 'providers/auth_provider.dart';
+import 'providers/database_provider.dart';
 import 'providers/theme_provider.dart';
 
 Future<void> main() async {
@@ -17,9 +19,18 @@ Future<void> main() async {
 
   await dotenv.load(fileName: '.env');
 
+  // Initialize database
+  final database = AppDatabase();
+
   // Initialize auth — loads persisted token from SharedPreferences
-  final container = ProviderContainer();
-  await container.read(authRepositoryProvider).initialize();
+  final container = ProviderContainer(
+    overrides: [
+      appDatabaseProvider.overrideWithValue(database),
+    ],
+  );
+  final authRepo = container.read(authRepositoryProvider);
+  authRepo.onSignOut = () => database.clearAllData();
+  await authRepo.initialize();
 
   runApp(
     UncontrolledProviderScope(

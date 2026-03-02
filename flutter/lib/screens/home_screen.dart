@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../providers/initial_sync_provider.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_theme_tokens.dart';
 import '../widgets/common/widgets.dart';
+import 'buildings_list.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final int initialTab;
@@ -19,7 +21,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final List<Widget> _screens = const [
-    _PlaceholderTab(title: 'Home'),
+    BuildingsList(),
     _PlaceholderTab(title: 'Explore'),
     _PlaceholderTab(title: 'Activity'),
     _PlaceholderTab(title: 'More'),
@@ -130,14 +132,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           // Menu items
           ListTile(
-            leading: const Icon(Icons.person_outlined),
-            title: const Text('Profile'),
-            onTap: () {
-              Navigator.pop(context);
-              context.push('/profile');
-            },
-          ),
-          ListTile(
             leading: const Icon(Icons.settings_outlined),
             title: const Text('Settings'),
             onTap: () {
@@ -184,6 +178,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (proceed != true || !mounted) return;
 
     await ref.read(authRepositoryProvider).signOut();
+    // Clear the cached sync check so the router redirects to /initial-sync
+    // on next login (the DB was just wiped by signOut).
+    ref.invalidate(needsInitialSyncProvider);
   }
 }
 
