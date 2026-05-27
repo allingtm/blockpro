@@ -75,6 +75,21 @@ class _InitialSyncScreenState extends ConsumerState<InitialSyncScreen> {
                 ),
                 SizedBox(height: tokens.spacingLg),
                 _SyncStepRow(
+                  label: 'Downloading assets',
+                  step: SyncStep.downloadingAssets,
+                  currentStep: state.currentStep,
+                ),
+                SizedBox(height: tokens.spacingLg),
+                _SyncStepRow(
+                  label: state.currentStep == SyncStep.downloadingChecklists &&
+                          state.total > 0
+                      ? 'Downloading checklists (${state.completed} / ${state.total})'
+                      : 'Downloading checklists',
+                  step: SyncStep.downloadingChecklists,
+                  currentStep: state.currentStep,
+                ),
+                SizedBox(height: tokens.spacingLg),
+                _SyncStepRow(
                   label: 'Ready',
                   step: SyncStep.complete,
                   currentStep: state.currentStep,
@@ -122,8 +137,12 @@ class _InitialSyncScreenState extends ConsumerState<InitialSyncScreen> {
 
   double _progressValue(InitialSyncState state) {
     return switch (state.currentStep) {
-      SyncStep.signingIn => 0.2,
-      SyncStep.downloadingBuildings => 0.6,
+      SyncStep.signingIn => 0.1,
+      SyncStep.downloadingBuildings => 0.2,
+      SyncStep.downloadingAssets => 0.35,
+      SyncStep.downloadingChecklists => state.total > 0
+          ? 0.4 + (0.5 * state.completed / state.total)
+          : 0.4,
       SyncStep.complete => 1.0,
     };
   }
@@ -166,13 +185,15 @@ class _SyncStepRow extends StatelessWidget {
                       color: colors.onSurfaceVariant, size: 24),
         ),
         const SizedBox(width: 12),
-        Text(
-          label,
-          style: AppTypography.bodyLarge.copyWith(
-            color: isComplete || isCurrent
-                ? colors.onSurface
-                : colors.onSurfaceVariant,
-            fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+        Expanded(
+          child: Text(
+            label,
+            style: AppTypography.bodyLarge.copyWith(
+              color: isComplete || isCurrent
+                  ? colors.onSurface
+                  : colors.onSurfaceVariant,
+              fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
         ),
       ],

@@ -83,7 +83,7 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    final url = '${ApiConfig.baseUrl}login';
+    final url = '${ApiConfig.baseUrl}app_login';
     final escapedEmail = escapeStringForJson(email);
     final escapedPassword = escapeStringForJson(password);
     final requestBody = jsonEncode({

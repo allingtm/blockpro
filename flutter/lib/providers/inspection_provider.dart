@@ -10,24 +10,52 @@ import '../repositories/api_repository.dart';
 /// State for a single question's answer during an in-progress inspection.
 class QuestionAnswer {
   final Question question;
-  final String answerText;
+  final String? chapterName;
+  final String? selectedAnswer;
   final List<File> photos;
 
   QuestionAnswer({
     required this.question,
-    this.answerText = '',
+    this.chapterName,
+    this.selectedAnswer,
     this.photos = const [],
   });
 
   QuestionAnswer copyWith({
-    String? answerText,
+    String? selectedAnswer,
+    bool clearAnswer = false,
     List<File>? photos,
   }) {
     return QuestionAnswer(
       question: question,
-      answerText: answerText ?? this.answerText,
+      chapterName: chapterName,
+      selectedAnswer: clearAnswer ? null : (selectedAnswer ?? this.selectedAnswer),
       photos: photos ?? this.photos,
     );
+  }
+
+  /// Whether a photo is currently required based on the question's rules
+  /// and the currently selected answer.
+  bool get isPhotoRequired {
+    final req = question.photoRequirement;
+    if (req == null) return false;
+    return req.isPhotoRequired(question.answerOption, selectedAnswer);
+  }
+
+  /// Whether the photo section should be visible.
+  bool get showPhotoSection {
+    final req = question.photoRequirement;
+    if (req == null) return true; // backwards compat: always show if no rule
+    return req.isPhotoRequired(question.answerOption, selectedAnswer);
+  }
+
+  /// Whether this answer is valid for submission.
+  bool get isValid {
+    // If the question has answer options, an answer must be selected
+    if (question.answerOption != null && selectedAnswer == null) return false;
+    // If a photo is required and none are provided, invalid
+    if (isPhotoRequired && photos.isEmpty) return false;
+    return true;
   }
 }
 
@@ -64,19 +92,28 @@ class InspectionState {
 }
 
 class InspectionNotifier extends StateNotifier<InspectionState> {
-  InspectionNotifier(this._apiRepository, String assetId, List<Question> questions)
-      : super(InspectionState(
-          assetId: assetId,
-          answers: questions
-              .map((q) => QuestionAnswer(question: q))
-              .toList(),
-        ));
+  InspectionNotifier(this._apiRepository, String assetId, List<QuestionAnswer> answers)
+      : super(InspectionState(assetId: assetId, answers: answers));
 
   final ApiRepository _apiRepository;
 
-  void updateAnswer(int index, String text) {
+  void updateAnswer(int index, String? answer) {
     final updated = List<QuestionAnswer>.from(state.answers);
-    updated[index] = updated[index].copyWith(answerText: text);
+    final current = updated[index];
+    // Check if switching away from a negative answer
+    final wasPhotoRequired = current.isPhotoRequired;
+    updated[index] = current.copyWith(selectedAnswer: answer);
+    final isNowPhotoRequired = updated[index].isPhotoRequired;
+    // Clear photos when photo is no longer required
+    if (wasPhotoRequired && !isNowPhotoRequired) {
+      updated[index] = updated[index].copyWith(photos: []);
+    }
+    state = state.copyWith(answers: updated);
+  }
+
+  void clearAnswer(int index) {
+    final updated = List<QuestionAnswer>.from(state.answers);
+    updated[index] = updated[index].copyWith(clearAnswer: true, photos: []);
     state = state.copyWith(answers: updated);
   }
 
@@ -97,6 +134,18 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
   }
 
   Future<void> submit() async {
+    // Validate all answers
+    final invalidIndex = state.answers.indexWhere((a) => !a.isValid);
+    if (invalidIndex != -1) {
+      final answer = state.answers[invalidIndex];
+      final reason = answer.question.answerOption != null &&
+              answer.selectedAnswer == null
+          ? 'Please answer question ${invalidIndex + 1}'
+          : 'Photo required for question ${invalidIndex + 1}';
+      state = state.copyWith(submitError: reason);
+      return;
+    }
+
     state = state.copyWith(isSubmitting: true, submitError: null);
 
     try {
@@ -110,7 +159,7 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
 
           try {
             final result = await _apiRepository.authenticatedPost(
-              'upload-image',
+              'app_upload-image',
               body: {
                 'base64': base64Image,
                 'asset_id': state.assetId,
@@ -133,7 +182,7 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
       debugPrint('── COMPLETED INSPECTION REQUEST ──');
       final answersPayload = state.answers.map((a) => {
         'question_text': a.question.questionText,
-        'answer_text': a.answerText,
+        'answer_text': a.selectedAnswer ?? '',
       }).toList();
 
       final body = {
@@ -144,7 +193,7 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
       debugPrint('Body: ${jsonEncode(body)}');
 
       final result = await _apiRepository.authenticatedPost(
-        'completed-inspection',
+        'app_completed-inspection',
         body: body,
       );
       debugPrint('── COMPLETED INSPECTION RESPONSE ──');
@@ -163,11 +212,12 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
 }
 
 /// Provider for an in-progress inspection.
-/// Create with (assetId, questions) tuple.
+/// Create with (assetId, answers) tuple — callers flatten chapters/questions
+/// into a list of [QuestionAnswer] so chapter context can be preserved.
 final inspectionNotifierProvider = StateNotifierProvider.autoDispose
-    .family<InspectionNotifier, InspectionState, ({String assetId, List<Question> questions})>(
+    .family<InspectionNotifier, InspectionState, ({String assetId, List<QuestionAnswer> answers})>(
   (ref, params) {
     final apiRepository = ref.watch(apiRepositoryProvider);
-    return InspectionNotifier(apiRepository, params.assetId, params.questions);
+    return InspectionNotifier(apiRepository, params.assetId, params.answers);
   },
 );

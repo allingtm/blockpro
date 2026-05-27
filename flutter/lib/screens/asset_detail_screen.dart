@@ -49,7 +49,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(asset.name),
+        title: Text(asset.displayName),
         actions: const [OfflineIndicator()],
       ),
       body: SingleChildScrollView(
@@ -69,44 +69,71 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                       SizedBox(width: tokens.spacingMd),
                       Expanded(
                         child: Text(
-                          asset.name,
+                          asset.displayName,
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
+                      if (asset.colour != null)
+                        _StatusChip(colour: asset.colour!),
                     ],
                   ),
                   SizedBox(height: tokens.spacingLg),
-                  if (asset.nextInspection != null)
+                  if (asset.dueDate != null)
                     _InfoRow(
                       icon: asset.isOverdue
                           ? Icons.warning_amber_rounded
                           : Icons.event,
                       iconColor:
                           asset.isOverdue ? colors.error : colors.primary,
-                      label: 'Next inspection',
-                      value: _formatDate(asset.nextInspection!),
+                      label: 'Due date',
+                      value: _formatDate(asset.dueDate!),
                     ),
-                  if (asset.previousInspection != null) ...[
+                  if (asset.lastCompleted != null) ...[
                     SizedBox(height: tokens.spacingSm),
                     _InfoRow(
                       icon: Icons.history,
                       iconColor: colors.onSurfaceVariant,
-                      label: 'Last inspection',
-                      value: _formatDate(asset.previousInspection!),
+                      label: 'Last completed',
+                      value: _formatDate(asset.lastCompleted!),
                     ),
                   ],
-                  if (asset.intervalDays != null) ...[
+                  if (asset.frequency != null) ...[
                     SizedBox(height: tokens.spacingSm),
                     _InfoRow(
                       icon: Icons.repeat,
                       iconColor: colors.onSurfaceVariant,
-                      label: 'Interval',
-                      value: '${asset.intervalDays} days',
+                      label: 'Frequency',
+                      value: asset.frequency!,
+                    ),
+                  ],
+                  if (asset.floor != null) ...[
+                    SizedBox(height: tokens.spacingSm),
+                    _InfoRow(
+                      icon: Icons.layers_outlined,
+                      iconColor: colors.onSurfaceVariant,
+                      label: 'Floor',
+                      value: asset.floor!,
+                    ),
+                  ],
+                  if (asset.location != null) ...[
+                    SizedBox(height: tokens.spacingSm),
+                    _InfoRow(
+                      icon: Icons.place_outlined,
+                      iconColor: colors.onSurfaceVariant,
+                      label: 'Location',
+                      value: asset.location!,
                     ),
                   ],
                 ],
               ),
             ),
+
+            // ── Help / tooltip section ──
+            if (asset.tooltipText != null ||
+                asset.tooltipUrlList.isNotEmpty) ...[
+              SizedBox(height: tokens.spacingLg),
+              _HelpSection(asset: asset),
+            ],
 
             SizedBox(height: tokens.spacingXl),
 
@@ -138,12 +165,103 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                       ? null
                       : () => context.push(
                             '/inspection/${asset.id}',
-                            extra: asset.name,
+                            extra: asset.displayName,
                           ),
                 ),
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Small coloured pill showing the asset's Red/Yellow/Green status.
+class _StatusChip extends StatelessWidget {
+  final AssetColour colour;
+  const _StatusChip({required this.colour});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = switch (colour) {
+      AssetColour.red => Theme.of(context).colorScheme.error,
+      AssetColour.yellow => const Color(0xFFD89D2A),
+      AssetColour.green => Theme.of(context).colorScheme.tertiary,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        colour.displayText,
+        style: TextStyle(
+          color: statusColor,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// Expandable help section showing `tooltiptext` and `tooltipurls` from the API.
+class _HelpSection extends StatelessWidget {
+  final Asset asset;
+  const _HelpSection({required this.asset});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final colors = context.colors;
+    final urls = asset.tooltipUrlList;
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.help_outline,
+                  size: tokens.iconSm, color: colors.primary),
+              SizedBox(width: tokens.spacingSm),
+              Text(
+                'Help',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ],
+          ),
+          if (asset.tooltipText != null) ...[
+            SizedBox(height: tokens.spacingSm),
+            Text(
+              asset.tooltipText!,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (urls.isNotEmpty) ...[
+            SizedBox(height: tokens.spacingSm),
+            ...urls.map((url) => Padding(
+                  padding: EdgeInsets.only(top: tokens.spacingXs),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.link, size: 14, color: colors.primary),
+                      SizedBox(width: tokens.spacingXs),
+                      Expanded(
+                        child: SelectableText(
+                          url,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: colors.primary),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ],
       ),
     );
   }

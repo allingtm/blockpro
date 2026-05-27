@@ -2,15 +2,18 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'daos/assets_dao.dart';
 import 'daos/buildings_dao.dart';
+import 'daos/chapters_dao.dart';
 import 'daos/inspections_dao.dart';
 import 'daos/questions_dao.dart';
 import 'tables/assets_table.dart';
 import 'tables/buildings_table.dart';
+import 'tables/chapters_table.dart';
 import 'tables/completed_inspections_table.dart';
 import 'tables/inspection_answers_table.dart';
 import 'tables/questions_table.dart';
@@ -21,6 +24,7 @@ part 'database.g.dart';
   tables: [
     BuildingsTable,
     AssetsTable,
+    ChaptersTable,
     QuestionsTable,
     CompletedInspectionsTable,
     InspectionAnswersTable,
@@ -28,6 +32,7 @@ part 'database.g.dart';
   daos: [
     BuildingsDao,
     AssetsDao,
+    ChaptersDao,
     QuestionsDao,
     InspectionsDao,
   ],
@@ -39,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -47,11 +52,17 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (Migrator m, int from, int to) async {
-          // Stepwise migrations — each version bump adds its own block.
-          // Example for future version 2:
-          // if (from < 2) {
-          //   await m.addColumn(assetsTable, assetsTable.newColumn);
-          // }
+          debugPrint('DB migrating from $from to $to (drop + recreate)');
+          // The local database is a disposable cache — any upgrade path
+          // drops every table and recreates them. Next sync repopulates
+          // from the API.
+          await customStatement('PRAGMA foreign_keys = OFF');
+          for (final table in allTables) {
+            await customStatement(
+                'DROP TABLE IF EXISTS "${table.actualTableName}"');
+          }
+          await m.createAll();
+          await customStatement('PRAGMA foreign_keys = ON');
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

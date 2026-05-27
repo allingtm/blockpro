@@ -8,10 +8,14 @@ class QuestionsTable extends Table {
 
   TextColumn get id => text()();
   TextColumn get questionText => text().withDefault(const Constant(''))();
+  TextColumn get description => text().nullable()();
   TextColumn get assetId =>
       text().references(AssetsTable, #id)();
-  TextColumn get source =>
-      text().withDefault(const Constant('template'))();
+  TextColumn get chapterId => text().nullable()();
+  IntColumn get orderNumber => integer().withDefault(const Constant(0))();
+  TextColumn get answerOption => text().nullable()();
+  TextColumn get photoRequirement => text().nullable()();
+  TextColumn get existingRemedials => text().nullable()();
   DateTimeColumn get lastSyncedAt => dateTime().nullable()();
 
   @override

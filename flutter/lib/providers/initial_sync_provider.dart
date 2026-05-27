@@ -6,16 +6,26 @@ import 'database_provider.dart';
 import 'sync_provider.dart';
 
 /// Steps shown during the initial data sync after first login.
-enum SyncStep { signingIn, downloadingBuildings, complete }
+enum SyncStep {
+  signingIn,
+  downloadingBuildings,
+  downloadingAssets,
+  downloadingChecklists,
+  complete,
+}
 
 /// State for the initial sync progress screen.
 class InitialSyncState {
   final SyncStep currentStep;
   final String? error;
+  final int completed;
+  final int total;
 
   const InitialSyncState({
     this.currentStep = SyncStep.signingIn,
     this.error,
+    this.completed = 0,
+    this.total = 0,
   });
 
   bool get isComplete => currentStep == SyncStep.complete;
@@ -23,7 +33,11 @@ class InitialSyncState {
 
   String get statusMessage => switch (currentStep) {
         SyncStep.signingIn => 'Signed in',
-        SyncStep.downloadingBuildings => 'Downloading your buildings...',
+        SyncStep.downloadingBuildings => 'Downloading buildings...',
+        SyncStep.downloadingAssets => 'Downloading assets...',
+        SyncStep.downloadingChecklists => total > 0
+            ? 'Downloading checklists ($completed / $total)'
+            : 'Downloading checklists...',
         SyncStep.complete => 'All set!',
       };
 
@@ -31,10 +45,14 @@ class InitialSyncState {
     SyncStep? currentStep,
     String? error,
     bool clearError = false,
+    int? completed,
+    int? total,
   }) {
     return InitialSyncState(
       currentStep: currentStep ?? this.currentStep,
       error: clearError ? null : (error ?? this.error),
+      completed: completed ?? this.completed,
+      total: total ?? this.total,
     );
   }
 }
@@ -59,16 +77,37 @@ class InitialSyncNotifier extends StateNotifier<InitialSyncState> {
     );
 
     try {
-      // Run the sync and the minimum display timer in parallel — the step
-      // is shown for at least _minStepDuration even if the sync is instant.
-      await Future.wait([
-        _sync.syncBuildings(),
-        Future.delayed(_minStepDuration),
-      ]);
-      state = state.copyWith(currentStep: SyncStep.complete);
+      await _sync.syncAll(
+        onProgress: (phase, completed, total) {
+          if (!mounted) return;
+          switch (phase) {
+            case SyncPhase.buildings:
+              state = state.copyWith(
+                currentStep: SyncStep.downloadingBuildings,
+              );
+            case SyncPhase.assets:
+              state = state.copyWith(
+                currentStep: SyncStep.downloadingAssets,
+                completed: completed,
+                total: total,
+              );
+            case SyncPhase.checklists:
+              state = state.copyWith(
+                currentStep: SyncStep.downloadingChecklists,
+                completed: completed,
+                total: total,
+              );
+          }
+        },
+      );
+      if (mounted) {
+        state = state.copyWith(currentStep: SyncStep.complete);
+      }
     } catch (e) {
       debugPrint('Initial sync failed: $e');
-      state = state.copyWith(error: 'Failed to download data. Please retry.');
+      if (mounted) {
+        state = state.copyWith(error: 'Failed to download data. Please retry.');
+      }
     }
   }
 

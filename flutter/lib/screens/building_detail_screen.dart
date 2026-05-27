@@ -132,9 +132,13 @@ class _AssetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final colors = context.colors;
-    final statusColor = asset.isOverdue ? colors.error : colors.tertiary;
-    final statusIcon =
-        asset.isOverdue ? Icons.warning_amber_rounded : Icons.check_circle;
+    final statusColor = _colourFor(asset.colour, colors);
+    final statusIcon = switch (asset.colour) {
+      AssetColour.red => Icons.warning_amber_rounded,
+      AssetColour.yellow => Icons.schedule,
+      AssetColour.green => Icons.check_circle,
+      null => Icons.circle_outlined,
+    };
 
     return AppCard(
       onTap: () => context.push('/asset/${asset.id}', extra: asset),
@@ -148,10 +152,10 @@ class _AssetCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  asset.name,
+                  asset.displayName,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                if (asset.nextInspection != null) ...[
+                if (asset.dueDate != null) ...[
                   SizedBox(height: tokens.spacingXs),
                   Row(
                     children: [
@@ -159,12 +163,32 @@ class _AssetCard extends StatelessWidget {
                       SizedBox(width: tokens.spacingXs),
                       Text(
                         asset.isOverdue
-                            ? 'Overdue — was ${_formatDate(asset.nextInspection!)}'
-                            : 'Next: ${_formatDate(asset.nextInspection!)}',
+                            ? 'Overdue — was ${_formatDate(asset.dueDate!)}'
+                            : 'Next: ${_formatDate(asset.dueDate!)}',
                         style:
                             Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: statusColor,
                                 ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (asset.location != null || asset.floor != null) ...[
+                  SizedBox(height: tokens.spacingXs),
+                  Row(
+                    children: [
+                      Icon(Icons.place_outlined,
+                          size: 14, color: colors.onSurfaceVariant),
+                      SizedBox(width: tokens.spacingXs),
+                      Expanded(
+                        child: Text(
+                          _locationLine(asset),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -177,4 +201,21 @@ class _AssetCard extends StatelessWidget {
       ),
     );
   }
+
+  static String _locationLine(Asset asset) {
+    final parts = <String>[
+      if (asset.floor != null) 'Floor ${asset.floor!}',
+      if (asset.location != null) asset.location!,
+    ];
+    return parts.join(' · ');
+  }
+}
+
+Color _colourFor(AssetColour? colour, ColorScheme colors) {
+  return switch (colour) {
+    AssetColour.red => colors.error,
+    AssetColour.yellow => const Color(0xFFD89D2A),
+    AssetColour.green => colors.tertiary,
+    null => colors.onSurfaceVariant,
+  };
 }

@@ -125,10 +125,21 @@ class PaginatedAssetsNotifier extends StateNotifier<PaginatedAssetsState> {
   static Asset _toAsset(AssetsTableData row) {
     return Asset(
       id: row.id,
-      name: row.name,
-      nextInspection: row.nextInspection,
-      previousInspection: row.previousInspection,
-      intervalDays: row.intervalDays,
+      buildingId: row.buildingId,
+      taskName: row.taskName,
+      nickname: row.nickname,
+      assetRegisterItems: row.assetRegisterItems,
+      tooltipText: row.tooltipText,
+      tooltipUrls: row.tooltipUrls,
+      lastCompleted: row.lastCompleted,
+      dueDate: row.dueDate,
+      frequency: row.frequency,
+      colour: AssetColour.fromString(row.colour),
+      location: row.location,
+      floor: row.floor,
+      yellowDate: row.yellowDate,
+      assetLastModified: row.assetLastModified,
+      checklistLastModified: row.checklistLastModified,
     );
   }
 

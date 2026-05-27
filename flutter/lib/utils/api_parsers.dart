@@ -8,19 +8,17 @@ import '../models/question.dart';
 
 /// Parses the buildings response from Bubble.
 ///
-/// The `/wf/fetchbuildings` endpoint can return:
+/// The `/wf/app_fetchbuildings` endpoint can return:
 ///   1. A JSON array directly (the actual observed behaviour)
 ///   2. A `Map` with a `response` key containing a JSON string → double-decode
 ///   3. A JSON string that needs a second decode
 List<Building> parseBuildingsResponse(dynamic data) {
   dynamic payload = data;
 
-  // If wrapped in a map with a "response" key, unwrap it.
   if (payload is Map<String, dynamic>) {
     payload = payload['response'] ?? payload;
   }
 
-  // If the payload is a string, it needs a second JSON decode.
   if (payload is String) {
     payload = jsonDecode(payload);
   }
@@ -32,7 +30,7 @@ List<Building> parseBuildingsResponse(dynamic data) {
         .toList();
   }
 
-  debugPrint('Unexpected fetchbuildings payload type: ${payload.runtimeType}');
+  debugPrint('Unexpected app_fetchbuildings payload type: ${payload.runtimeType}');
   return [];
 }
 
@@ -58,12 +56,20 @@ List<Asset> parseAssetsResponse(dynamic data) {
         .toList();
   }
 
-  debugPrint('Unexpected fetchassets payload type: ${payload.runtimeType}');
+  debugPrint('Unexpected app_fetch_all_assets payload type: ${payload.runtimeType}');
   return [];
 }
 
-/// Parses the questions response from Bubble.
-List<Question> parseQuestionsResponse(dynamic data) {
+/// Parses the v2 checklist response from Bubble.
+///
+/// The `/wf/app_fetch_checklist_single` endpoint returns a JSON array where
+/// each entry has the shape:
+///   `{ "parentassetid": "...", "chapters": [ { chaptername, chapterorder,
+///     questions: [ { questionid, questiontext, ... } ] } ] }`
+///
+/// Returns a flat list of Chapters (each with its nested questions) across
+/// all entries in the response.
+List<Chapter> parseChecklistResponse(dynamic data) {
   dynamic payload = data;
 
   if (payload is Map<String, dynamic>) {
@@ -74,71 +80,20 @@ List<Question> parseQuestionsResponse(dynamic data) {
     payload = jsonDecode(payload);
   }
 
-  if (payload is List) {
-    return payload
-        .whereType<Map<String, dynamic>>()
-        .map((e) => Question.fromJson(e))
-        .toList();
+  if (payload is! List) {
+    debugPrint(
+        'Unexpected app_fetch_checklist_single payload type: ${payload.runtimeType}');
+    return [];
   }
 
-  debugPrint('Unexpected fetchquestions payload type: ${payload.runtimeType}');
-  return [];
-}
-
-/// Parses the checklist response from Bubble.
-///
-/// The `/wf/fetchchecklist` endpoint returns:
-///   `{ "status": "success", "response": { "checklist": "<concatenated-json>" } }`
-///
-/// The checklist value is multiple JSON objects concatenated with commas but
-/// NOT wrapped in array brackets, e.g.: `{...},{...}`. We wrap in `[...]`
-/// before parsing.
-List<Question> parseChecklistResponse(dynamic data) {
-  dynamic payload = data;
-
-  // Unwrap the Bubble response envelope.
-  if (payload is Map<String, dynamic>) {
-    final response = payload['response'];
-    if (response is Map<String, dynamic>) {
-      payload = response['checklist'] ?? response;
-    } else {
-      payload = response ?? payload;
+  final chapters = <Chapter>[];
+  for (final entry in payload.whereType<Map<String, dynamic>>()) {
+    final assetId = entry['parentassetid'] as String? ?? '';
+    final chaptersRaw = entry['chapters'];
+    if (chaptersRaw is! List) continue;
+    for (final c in chaptersRaw.whereType<Map<String, dynamic>>()) {
+      chapters.add(Chapter.fromJson(c, assetId: assetId));
     }
   }
-
-  // If it's a string, it may be malformed:
-  //   - Concatenated objects without array brackets: {…},{…}
-  //   - Typographic/smart quotes instead of straight quotes: \u201C \u201D
-  if (payload is String) {
-    var jsonString = payload.trim();
-
-    // Replace smart/curly quotes with straight quotes.
-    jsonString = jsonString
-        .replaceAll('\u201C', '"') // left double quotation mark
-        .replaceAll('\u201D', '"') // right double quotation mark
-        .replaceAll('\u2018', "'") // left single quotation mark
-        .replaceAll('\u2019', "'"); // right single quotation mark
-
-    // If it starts with { and not [, wrap it in an array.
-    if (jsonString.startsWith('{')) {
-      jsonString = '[$jsonString]';
-    }
-    try {
-      payload = jsonDecode(jsonString);
-    } catch (e) {
-      debugPrint('Failed to parse checklist JSON: $e');
-      debugPrint('Attempted to parse: $jsonString');
-      return [];
-    }
-  }
-
-  if (payload is List) {
-    return payload
-        .whereType<Map<String, dynamic>>()
-        .map((e) => Question.fromJson(e))
-        .toList();
-  }
-
-  debugPrint('Unexpected fetchchecklist payload type: ${payload.runtimeType}');
-  return [];
+  return chapters;
 }

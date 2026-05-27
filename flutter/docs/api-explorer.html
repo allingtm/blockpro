@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlockPro API Explorer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
+        h1 { margin-bottom: 20px; color: #333; }
+        .card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h2 { font-size: 16px; margin-bottom: 12px; color: #555; }
+        label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+        input[type="text"], input[type="password"], input[type="email"] {
+            width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; margin-bottom: 10px;
+        }
+        button {
+            padding: 8px 16px; border: none; border-radius: 4px; font-size: 14px; cursor: pointer;
+            background: #4a90d9; color: #fff; margin-right: 8px; margin-bottom: 8px;
+        }
+        button:hover { background: #357abd; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-copy { background: #28a745; font-size: 12px; padding: 4px 10px; }
+        .btn-copy:hover { background: #218838; }
+        pre {
+            background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 4px;
+            overflow-x: auto; font-size: 13px; max-height: 500px; overflow-y: auto;
+            white-space: pre-wrap; word-wrap: break-word; margin-top: 8px;
+        }
+        .status { font-size: 13px; padding: 6px 12px; border-radius: 4px; margin-bottom: 8px; display: none; }
+        .status.success { display: block; background: #d4edda; color: #155724; }
+        .status.error { display: block; background: #f8d7da; color: #721c24; }
+        .status.info { display: block; background: #d1ecf1; color: #0c5460; }
+        .token-display { font-size: 12px; color: #888; word-break: break-all; margin-top: 8px; }
+        .endpoint-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+        .endpoint-row input { flex: 1; min-width: 200px; }
+        .result-header { display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+    <h1>BlockPro API Explorer</h1>
+
+    <!-- Login -->
+    <div class="card">
+        <h2>1. Login</h2>
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="password">
+        <button onclick="doLogin()">Login</button>
+        <div id="loginStatus" class="status"></div>
+        <div id="tokenDisplay" class="token-display"></div>
+    </div>
+
+    <!-- Fetch Buildings -->
+    <div class="card">
+        <h2>2. Fetch Buildings</h2>
+        <button onclick="fetchBuildings()" id="btnBuildings" disabled>Fetch Buildings</button>
+        <div id="buildingsStatus" class="status"></div>
+        <div id="buildingsResult"></div>
+    </div>
+
+    <!-- Fetch All Assets -->
+    <div class="card">
+        <h2>3. Fetch All Assets</h2>
+        <div class="endpoint-row">
+            <div style="flex:1">
+                <label>block_id</label>
+                <input type="text" id="blockId" placeholder="Select a building above or paste block_id">
+            </div>
+            <button onclick="fetchAllAssets()" id="btnAssets" disabled>Fetch Assets</button>
+        </div>
+        <div id="assetsStatus" class="status"></div>
+        <div id="assetsResult"></div>
+    </div>
+
+    <!-- Fetch Single Asset -->
+    <div class="card">
+        <h2>4. Fetch Single Asset</h2>
+        <div class="endpoint-row">
+            <div style="flex:1">
+                <label>asset_id</label>
+                <input type="text" id="assetIdSingle" placeholder="Select an asset above or paste asset_id">
+            </div>
+            <button onclick="fetchAssetSingle()" id="btnAssetSingle" disabled>Fetch Asset</button>
+        </div>
+        <div id="assetSingleStatus" class="status"></div>
+        <div id="assetSingleResult"></div>
+    </div>
+
+    <!-- Fetch Checklist -->
+    <div class="card">
+        <h2>5. Fetch Checklist Single</h2>
+        <div class="endpoint-row">
+            <div style="flex:1">
+                <label>asset_id</label>
+                <input type="text" id="assetIdChecklist" placeholder="Select an asset above or paste asset_id">
+            </div>
+            <button onclick="fetchChecklist()" id="btnChecklist" disabled>Fetch Checklist</button>
+        </div>
+        <div id="checklistStatus" class="status"></div>
+        <div id="checklistResult"></div>
+    </div>
+
+    <script>
+        const BASE = 'https://flutterflowtest.bubbleapps.io/version-test/api/1.1/wf';
+        let token = '';
+
+        function setStatus(id, msg, type) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.className = 'status ' + type;
+        }
+
+        function showResult(containerId, data, label) {
+            const container = document.getElementById(containerId);
+            const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            container.innerHTML = `
+                <div class="result-header">
+                    <span style="font-size:13px;color:#888;">${label}</span>
+                    <button class="btn-copy" onclick="copyResult(this)">Copy JSON</button>
+                </div>
+                <pre>${escapeHtml(json)}</pre>
+            `;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function copyResult(btn) {
+            const pre = btn.closest('.card').querySelector('pre');
+            navigator.clipboard.writeText(pre.textContent);
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy JSON', 1500);
+        }
+
+        function enableButtons() {
+            document.getElementById('btnBuildings').disabled = false;
+            document.getElementById('btnAssets').disabled = false;
+            document.getElementById('btnAssetSingle').disabled = false;
+            document.getElementById('btnChecklist').disabled = false;
+        }
+
+        async function doLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            if (!email || !password) { setStatus('loginStatus', 'Enter email and password', 'error'); return; }
+
+            setStatus('loginStatus', 'Logging in...', 'info');
+            try {
+                const res = await fetch(`${BASE}/app_login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                if (data.response && data.response.token) {
+                    token = data.response.token;
+                    setStatus('loginStatus', `Logged in. User ID: ${data.response.user_id}`, 'success');
+                    document.getElementById('tokenDisplay').textContent = `Token: ${token.substring(0, 40)}...`;
+                    enableButtons();
+                } else {
+                    setStatus('loginStatus', `Login failed: ${data.message || JSON.stringify(data)}`, 'error');
+                }
+            } catch (e) {
+                setStatus('loginStatus', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function fetchBuildings() {
+            setStatus('buildingsStatus', 'Fetching...', 'info');
+            try {
+                const res = await fetch(`${BASE}/app_fetchbuildings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.text();
+                let parsed;
+                try { parsed = JSON.parse(data); } catch(e) { parsed = data; }
+                setStatus('buildingsStatus', `OK (${res.status})`, 'success');
+                showResult('buildingsResult', parsed, 'GET /wf/app_fetchbuildings');
+
+                // Try to extract building IDs for convenience
+                try {
+                    const buildings = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+                    if (Array.isArray(buildings) && buildings.length > 0) {
+                        const firstId = buildings[0]._id || buildings[0].id || buildings[0].unique_id;
+                        if (firstId) document.getElementById('blockId').value = firstId;
+                    }
+                } catch(e) {}
+            } catch (e) {
+                setStatus('buildingsStatus', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function fetchAllAssets() {
+            const blockId = document.getElementById('blockId').value;
+            if (!blockId) { setStatus('assetsStatus', 'Enter a block_id', 'error'); return; }
+
+            setStatus('assetsStatus', 'Fetching...', 'info');
+            try {
+                const res = await fetch(`${BASE}/app_fetch_all_assets?block_id=${encodeURIComponent(blockId)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.text();
+                let parsed;
+                try { parsed = JSON.parse(data); } catch(e) { parsed = data; }
+                setStatus('assetsStatus', `OK (${res.status})`, 'success');
+                showResult('assetsResult', parsed, `GET /wf/app_fetch_all_assets?block_id=${blockId}`);
+
+                // Try to extract first asset ID
+                try {
+                    const assets = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+                    const list = Array.isArray(assets) ? assets : (assets.response || []);
+                    if (Array.isArray(list) && list.length > 0) {
+                        const firstId = list[0]._id || list[0].id || list[0].unique_id;
+                        if (firstId) {
+                            document.getElementById('assetIdSingle').value = firstId;
+                            document.getElementById('assetIdChecklist').value = firstId;
+                        }
+                    }
+                } catch(e) {}
+            } catch (e) {
+                setStatus('assetsStatus', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function fetchAssetSingle() {
+            const assetId = document.getElementById('assetIdSingle').value;
+            if (!assetId) { setStatus('assetSingleStatus', 'Enter an asset_id', 'error'); return; }
+
+            setStatus('assetSingleStatus', 'Fetching...', 'info');
+            try {
+                const res = await fetch(`${BASE}/app_fetch_asset_single?asset_id=${encodeURIComponent(assetId)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.text();
+                let parsed;
+                try { parsed = JSON.parse(data); } catch(e) { parsed = data; }
+                setStatus('assetSingleStatus', `OK (${res.status})`, 'success');
+                showResult('assetSingleResult', parsed, `GET /wf/app_fetch_asset_single?asset_id=${assetId}`);
+            } catch (e) {
+                setStatus('assetSingleStatus', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function fetchChecklist() {
+            const assetId = document.getElementById('assetIdChecklist').value;
+            if (!assetId) { setStatus('checklistStatus', 'Enter an asset_id', 'error'); return; }
+
+            setStatus('checklistStatus', 'Fetching...', 'info');
+            try {
+                const res = await fetch(`${BASE}/app_fetch_checklist_single?asset_id=${encodeURIComponent(assetId)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.text();
+                let parsed;
+                try { parsed = JSON.parse(data); } catch(e) { parsed = data; }
+                setStatus('checklistStatus', `OK (${res.status})`, 'success');
+                showResult('checklistResult', parsed, `GET /wf/app_fetch_checklist_single?asset_id=${assetId}`);
+            } catch (e) {
+                setStatus('checklistStatus', `Error: ${e.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

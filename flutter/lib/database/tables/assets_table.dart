@@ -7,12 +7,22 @@ class AssetsTable extends Table {
   String get tableName => 'assets';
 
   TextColumn get id => text()();
-  TextColumn get name => text().withDefault(const Constant('Unnamed'))();
   TextColumn get buildingId =>
       text().references(BuildingsTable, #id)();
-  DateTimeColumn get nextInspection => dateTime().nullable()();
-  DateTimeColumn get previousInspection => dateTime().nullable()();
-  IntColumn get intervalDays => integer().nullable()();
+  TextColumn get taskName => text().withDefault(const Constant('Unnamed'))();
+  TextColumn get nickname => text().nullable()();
+  TextColumn get assetRegisterItems => text().nullable()();
+  TextColumn get tooltipText => text().nullable()();
+  TextColumn get tooltipUrls => text().nullable()();
+  DateTimeColumn get lastCompleted => dateTime().nullable()();
+  DateTimeColumn get dueDate => dateTime().nullable()();
+  TextColumn get frequency => text().nullable()();
+  TextColumn get colour => text().nullable()();
+  TextColumn get location => text().nullable()();
+  TextColumn get floor => text().nullable()();
+  DateTimeColumn get yellowDate => dateTime().nullable()();
+  DateTimeColumn get assetLastModified => dateTime().nullable()();
+  DateTimeColumn get checklistLastModified => dateTime().nullable()();
   DateTimeColumn get lastSyncedAt => dateTime().nullable()();
 
   @override

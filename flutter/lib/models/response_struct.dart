@@ -15,7 +15,8 @@ class ResponseStruct {
     return ResponseStruct(
       token: json['token'] as String? ?? '',
       userId: json['user_id'] as String? ?? '',
-      expires: json['expires'] as int? ?? 0,
+      // API spec notes `expires` is a float (seconds).
+      expires: (json['expires'] as num?)?.toInt() ?? 0,
       buildings: json['buildings'] as String?,
     );
   }

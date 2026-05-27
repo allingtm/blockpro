@@ -37,6 +37,13 @@ class BuildingsDao extends DatabaseAccessor<AppDatabase>
     return result.read(count)!;
   }
 
+  Future<List<String>> getAllBuildingIds() async {
+    final query = selectOnly(buildingsTable)
+      ..addColumns([buildingsTable.id]);
+    final rows = await query.get();
+    return rows.map((row) => row.read(buildingsTable.id)!).toList();
+  }
+
   // ── Upsert (API sync) ─────────────────────────────────
 
   Future<void> upsertBuildings(
