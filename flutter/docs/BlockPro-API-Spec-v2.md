@@ -520,12 +520,13 @@ Upload a base64-encoded image and link it to an asset.
   "status": "string",
   "response": {
     "success": "string",
-    "image_url": "string — URL of the uploaded image on Bubble's CDN"
+    "image_url": "string — URL of the uploaded image on Bubble's CDN",
+    "image_id": "string — Bubble unique ID of the Photo record"
   }
 }
 ```
 
-**Note:** This endpoint does not return an `image_id` unlike `app_upload-image`.
+**Note:** Per the live Bubble swagger, this endpoint returns the same `success` / `image_url` / `image_id` response shape as `app_upload-image`.
 
 ---
 

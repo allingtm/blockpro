@@ -20,10 +20,9 @@ class WelcomeScreen extends StatelessWidget {
             padding: EdgeInsets.all(tokens.spacing2xl),
             child: Column(
               children: [
-                Image.asset(
-                  'assets/images/app_launcher_icon.png',
-                  width: tokens.icon2xl,
-                  height: tokens.icon2xl,
+                BlockProLogo(
+                  size: tokens.icon2xl,
+                  color: tokens.brandIcon,
                 ),
                 SizedBox(height: tokens.spacing3xl),
                 Text('BlockPro', style: AppTypography.displayLarge),

@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../models/asset.dart';
+import '../../models/building.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/initial_sync_provider.dart';
 import '../../screens/auth/login_screen.dart';
+import '../../screens/block_inspections_screen.dart';
 import '../../screens/home_screen.dart';
 import '../../screens/initial_sync_screen.dart';
-import '../../screens/settings_screen.dart';
-import '../../screens/asset_detail_screen.dart';
-import '../../screens/building_detail_screen.dart';
 import '../../screens/inspection_screen.dart';
 import '../../screens/welcome_screen.dart';
-import '../../models/asset.dart';
 
 /// Notifier that triggers GoRouter refreshes when auth or sync state changes.
 class _RouterRefreshNotifier extends ChangeNotifier {
@@ -76,35 +75,23 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const HomeScreen(),
       ),
       GoRoute(
-        path: '/building/:id',
-        name: 'building',
-        builder: (context, state) {
-          final id = state.pathParameters['id']!;
-          final name = state.extra as String? ?? 'Building';
-          return BuildingDetailScreen(buildingId: id, buildingName: name);
-        },
-      ),
-      GoRoute(
-        path: '/asset/:id',
-        name: 'asset',
-        builder: (context, state) {
-          final asset = state.extra as Asset;
-          return AssetDetailScreen(asset: asset);
+        path: '/block/:id',
+        name: 'block',
+        pageBuilder: (context, state) {
+          final building = state.extra as Building;
+          return _slidePage(
+            state,
+            BlockInspectionsScreen(building: building),
+          );
         },
       ),
       GoRoute(
         path: '/inspection/:id',
         name: 'inspection',
-        builder: (context, state) {
-          final id = state.pathParameters['id']!;
-          final name = state.extra as String? ?? 'Inspection';
-          return InspectionScreen(assetId: id, assetName: name);
+        pageBuilder: (context, state) {
+          final asset = state.extra as Asset;
+          return _slidePage(state, InspectionScreen(asset: asset));
         },
-      ),
-      GoRoute(
-        path: '/settings',
-        name: 'settings',
-        builder: (context, state) => const SettingsScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
@@ -113,3 +100,23 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     ),
   );
 });
+
+/// Page that slides in from the right when pushed and back out to the right
+/// when popped (right-to-left forward navigation, reversed on return).
+CustomTransitionPage<void> _slidePage(GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 280),
+    reverseTransitionDuration: const Duration(milliseconds: 280),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(
+        CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+      );
+      return SlideTransition(position: slide, child: child);
+    },
+  );
+}

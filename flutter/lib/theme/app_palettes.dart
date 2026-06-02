@@ -1,6 +1,20 @@
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 
+/// Fixed dark navy used by the brand AppBar and end-drawer in both themes.
+const Color kAppBarNavy = Color(0xFF0E1A2E);
+
+/// Primary action blue used on Start / Complete / Continue buttons.
+const Color kActionBlue = Color(0xFF3F7BE0);
+
+/// Stripe accent colours for status indicators on cards.
+const Color kStatusRed = Color(0xFFD64545);
+const Color kStatusAmber = Color(0xFFE0A340);
+const Color kStatusGreen = Color(0xFF3FB76A);
+
+/// Scaffold background used in light mode (just off-white).
+const Color kScaffoldGrey = Color(0xFFF4F5F7);
+
 /// BlockPro brand colour palette.
 ///
 /// FlexColorScheme generates full M3 tonal palettes from these seeds.

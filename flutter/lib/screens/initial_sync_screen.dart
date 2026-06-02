@@ -52,10 +52,9 @@ class _InitialSyncScreenState extends ConsumerState<InitialSyncScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // App branding
-                Image.asset(
-                  'assets/images/app_launcher_icon.png',
-                  width: tokens.iconXl,
-                  height: tokens.iconXl,
+                BlockProLogo(
+                  size: tokens.iconXl,
+                  color: tokens.brandIcon,
                 ),
                 SizedBox(height: tokens.spacingXl),
                 Text('BlockPro', style: AppTypography.displayLarge),
@@ -75,7 +74,10 @@ class _InitialSyncScreenState extends ConsumerState<InitialSyncScreen> {
                 ),
                 SizedBox(height: tokens.spacingLg),
                 _SyncStepRow(
-                  label: 'Downloading assets',
+                  label: state.currentStep == SyncStep.downloadingAssets &&
+                          state.total > 0
+                      ? 'Downloading assets (${state.completed} / ${state.total} blocks)'
+                      : 'Downloading assets',
                   step: SyncStep.downloadingAssets,
                   currentStep: state.currentStep,
                 ),

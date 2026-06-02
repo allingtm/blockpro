@@ -115,7 +115,7 @@ To be clear about the boundaries of the rules the app applies today:
 - **No conditional / skip logic.** One question's answer never hides, shows, or changes another question. The only built-in way to mark a question as not applicable is the N/A option, when the question's answer type includes it.
 - **No pass/fail scoring.** The app does not calculate a score or an overall pass/fail for the inspection. Answers are recorded as-is.
 - **No automatic remedial creation.** Selecting a negative answer does **not** raise a remedial inside the app. Existing remedials from past inspections are shown as read-only context only; any new remedial flow, if one exists, happens on the server after submission.
-- **No draft / resume.** The inspection is only held in the app's memory until Submit is tapped. Closing the screen, closing the app, or a crash will lose unsubmitted answers.
+- **Drafts are saved on exit.** Tapping **Save draft and exit** on an incomplete inspection persists the current answers and photos locally (Drift DB + a durable photo folder). Reopening the asset restores them automatically ("Draft restored"), and assets/buildings with a saved draft show a "Draft" badge. The draft is deleted once the inspection is submitted. (A crash before tapping Save still loses unsaved in-memory answers — auto-save during editing is not implemented.)
 
 These aren't oversights in this document — they describe the behaviour that currently exists in the code.
 

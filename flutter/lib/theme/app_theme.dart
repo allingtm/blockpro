@@ -1,5 +1,6 @@
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
+import 'app_palettes.dart';
 import 'app_theme_tokens.dart';
 
 /// Builds ThemeData using FlexColorScheme.
@@ -12,7 +13,7 @@ class AppTheme {
 
   /// Build a light theme from a [FlexSchemeData].
   static ThemeData light(FlexSchemeData schemeData) {
-    return FlexThemeData.light(
+    final base = FlexThemeData.light(
       // ── Colours ─────────────────────────────────────
       colors: schemeData.light,
       useMaterial3: true,
@@ -57,11 +58,17 @@ class AppTheme {
         AppThemeTokens.standard,
       },
     );
+
+    return base.copyWith(
+      scaffoldBackgroundColor: kScaffoldGrey,
+      appBarTheme: _navyAppBarTheme(),
+      cardTheme: _brandCardTheme(AppThemeTokens.standard.cardSurface),
+    );
   }
 
   /// Build a dark theme from a [FlexSchemeData].
   static ThemeData dark(FlexSchemeData schemeData) {
-    return FlexThemeData.dark(
+    final base = FlexThemeData.dark(
       colors: schemeData.dark,
       useMaterial3: true,
 
@@ -94,8 +101,44 @@ class AppTheme {
       ),
 
       extensions: <ThemeExtension<dynamic>>{
-        AppThemeTokens.standard,
+        AppThemeTokens.dark,
       },
+    );
+
+    return base.copyWith(
+      appBarTheme: _navyAppBarTheme(),
+      cardTheme: _brandCardTheme(AppThemeTokens.dark.cardSurface),
+    );
+  }
+
+  static AppBarTheme _navyAppBarTheme() {
+    return const AppBarTheme(
+      backgroundColor: kAppBarNavy,
+      foregroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: 0,
+      elevation: 0,
+      centerTitle: true,
+      iconTheme: IconThemeData(color: Colors.white),
+      actionsIconTheme: IconThemeData(color: Colors.white),
+      titleTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
+  static CardThemeData _brandCardTheme(Color surface) {
+    return CardThemeData(
+      color: surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      margin: EdgeInsets.zero,
     );
   }
 }

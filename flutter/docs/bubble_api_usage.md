@@ -1,6 +1,6 @@
 # Bubble API Usage
 
-This document describes how the BlockPro Flutter app communicates with the Bubble.io backend API.
+This document describes how the BlockPro Flutter app communicates with the Bubble.io backend API (the v2 API, introduced in commit `f29beef`).
 
 ---
 
@@ -25,11 +25,11 @@ Content-Type: application/json
 
 ## Endpoints
 
-### 1. `login` — User Authentication
+### 1. `app_login` — User Authentication
 
 | | |
 |---|---|
-| **Path** | `login` |
+| **Path** | `app_login` |
 | **Method** | POST |
 | **Auth required** | No |
 | **Source file** | `lib/repositories/auth_repository.dart` |
@@ -65,11 +65,11 @@ Content-Type: application/json
 
 ---
 
-### 2. `fetchbuildings` — Download Buildings
+### 2. `app_fetchbuildings` — Download Buildings
 
 | | |
 |---|---|
-| **Path** | `fetchbuildings` |
+| **Path** | `app_fetchbuildings` |
 | **Method** | GET |
 | **Auth required** | Yes |
 | **Source file** | `lib/repositories/sync_repository.dart` |
@@ -83,9 +83,8 @@ Content-Type: application/json
 ```json
 [
   {
-    "id": "abc123",
-    "name": "Block A",
-    "List of assets": ["asset1", "asset2"]
+    "id": "1756484476534x490740256824968800",
+    "name": "Building 1"
   }
 ]
 ```
@@ -94,9 +93,8 @@ Content-Type: application/json
 
 | JSON key | Model field | Notes |
 |----------|-------------|-------|
-| `id` or `_id` | `Building.id` | |
-| `name` or `Name` | `Building.name` | Falls back to `"Unnamed"` |
-| `List of assets` | `Building.assetCount` | Length of array |
+| `id` | `Building.id` | |
+| `name` | `Building.name` | Falls back to `"Unnamed"` |
 
 **What happens next:** Buildings are upserted into the local SQLite `buildings` table via `buildingsDao.upsertBuildings()`.
 
@@ -107,16 +105,16 @@ Content-Type: application/json
 
 ---
 
-### 3. `fetchassets` — Download Assets for a Building
+### 3. `app_fetch_all_assets` — Download Assets for a Building
 
 | | |
 |---|---|
-| **Path** | `fetchassets` |
+| **Path** | `app_fetch_all_assets` |
 | **Method** | GET |
 | **Auth required** | Yes |
 | **Source file** | `lib/repositories/sync_repository.dart` |
 
-**When it's called:** Phase 2 of initial sync — one call per building, sequentially.
+**When it's called:** Phase 2 of initial sync — one call per building.
 
 **Query params:**
 
@@ -129,11 +127,22 @@ Content-Type: application/json
 ```json
 [
   {
-    "assetId": "xyz789",
-    "assetName": "Fire Extinguisher #1",
-    "date_of_next_inspection": "2026-06-15",
-    "date_of_previous_inspection": "2025-12-15",
-    "interval_number_of_days": 182
+    "assetId": "1771864899143x375085884294525250",
+    "buildingId": "1756831363197x720244312004630400",
+    "taskname": "Fire door inspection",
+    "assetnickname": "896",
+    "assetregisteritems": "",
+    "tooltiptext": "",
+    "tooltipurls": "",
+    "lastcompleted": "2026-04-14T11:27:56.319Z",
+    "duedate": "2026-04-14T11:27:56.319Z",
+    "frequency": "7 Day(s)",
+    "colour": "Red",
+    "location": "",
+    "floor": "",
+    "yellowdate": "2026-04-14T11:27:56.319Z",
+    "assetlastmodified": "2026-04-13T10:09:31.738Z",
+    "checklistlastmodified": "2026-04-14T11:02:50.833Z"
   }
 ]
 ```
@@ -142,26 +151,29 @@ Content-Type: application/json
 
 | JSON key | Model field | Notes |
 |----------|-------------|-------|
-| `assetId` or `id` | `Asset.id` | |
-| `assetName` or `name` | `Asset.name` | Falls back to `"Unnamed"` |
-| `date_of_next_inspection` | `Asset.nextInspection` | Parsed as `DateTime` |
-| `date_of_previous_inspection` | `Asset.previousInspection` | Parsed as `DateTime` |
-| `interval_number_of_days` | `Asset.intervalDays` | Integer |
+| `assetId` | `Asset.id` | |
+| `buildingId` | `Asset.buildingId` | Links the asset to its building |
+| `taskname` | `Asset.taskName` | |
+| `assetnickname` | `Asset.nickname` | Null if empty |
+| `colour` | `Asset.colour` | Enum: `Red`, `Yellow`, `Green` |
+| `lastcompleted` / `duedate` / `yellowdate` | dates | Parsed as `DateTime` |
+| `frequency` | `Asset.frequency` | e.g. `"7 Day(s)"` |
+| `checklistlastmodified` | (sync key) | Drives the incremental checklist fetch in Phase 3 |
 
-**What happens next:** Assets are upserted into the local SQLite `assets` table, linked to their building via `buildingId`.
+**What happens next:** Assets are upserted into the local SQLite `assets` table, linked to their building via `buildingId`. Each asset's `checklistlastmodified` is captured to decide which checklists are stale.
 
 ---
 
-### 4. `fetchquestions` — Download Question Templates
+### 4. `app_fetch_checklist_single` — Download Checklist for an Asset
 
 | | |
 |---|---|
-| **Path** | `fetchquestions` |
+| **Path** | `app_fetch_checklist_single` |
 | **Method** | GET |
 | **Auth required** | Yes |
 | **Source file** | `lib/repositories/sync_repository.dart` |
 
-**When it's called:** Not currently invoked during the initial sync flow. The method `syncQuestionsForAsset()` exists but is not called. Checklists (endpoint 5) are used instead.
+**When it's called:** Phase 3 of the initial sync — one call per asset, run in parallel with a max concurrency of 5. **Incremental:** a checklist is only fetched when its `checklistlastmodified` differs from the value stored locally.
 
 **Query params:**
 
@@ -169,77 +181,56 @@ Content-Type: application/json
 |-------|-------|
 | `asset_id` | The asset ID |
 
-**Response:** JSON array of question objects.
+**Response:** JSON array containing a single checklist object with a chapters → questions hierarchy.
 
 ```json
 [
   {
-    "question_id": "q001",
-    "question_text": "Is the pressure gauge in the green zone?",
-    "answer_option": "Yes/no",
-    "photo_requirement": "Always"
+    "parentassetid": "1771864899143x375085884294525250",
+    "chapters": [
+      {
+        "chaptername": "Fire door",
+        "chapterorder": 1,
+        "questions": [
+          {
+            "questionid": "1771871963645x392498056957566000",
+            "questiontext": "Does this door self-close fully into its frame?",
+            "questiondesc": "Additional guidance",
+            "answertype": "Yes|No",
+            "photorequirement": "Always",
+            "questionordernumber": 5,
+            "existingremedials": []
+          }
+        ]
+      }
+    ]
   }
 ]
-```
-
-**Parsed fields:** Same as checklist (see below). Stored with `source = 'template'` in the questions table.
-
----
-
-### 5. `fetchchecklist` — Download Checklist for an Asset
-
-| | |
-|---|---|
-| **Path** | `fetchchecklist` |
-| **Method** | GET |
-| **Auth required** | Yes |
-| **Source file** | `lib/repositories/sync_repository.dart` |
-
-**When it's called:**
-1. **Initial sync (Phase 3)** — One call per asset, run in parallel with a max concurrency of 5.
-2. **Background sync** — Triggered when the inspection screen or asset detail loads, via `checklistStreamProvider` and `checklistCountProvider` in `lib/providers/checklist_provider.dart`. These are fire-and-forget calls that refresh local data in the background.
-
-**Query params:**
-
-| Param | Value |
-|-------|-------|
-| `asset_id` | The asset ID |
-
-**Response:** Nested envelope with a malformed checklist string.
-
-```json
-{
-  "status": "success",
-  "response": {
-    "checklist": "{\"question_id\":\"q1\",\"question_text\":\"...\",\"answer_option\":\"Yes/no\",\"photo_requirement\":\"Always\"},{\"question_id\":\"q2\",...}"
-  }
-}
 ```
 
 **Parsed fields:**
 
 | JSON key | Model field | Notes |
 |----------|-------------|-------|
-| `question_id` or `id` or `_id` | `Question.id` | |
-| `question_text` or `questionText` or `Question text` | `Question.questionText` | |
-| `answer_option` or `answerOption` or `Answer option` | `Question.answerOption` | Enum: `Yes/no`, `Satisfactory/unsatisfactory`, `Yes/no/n/a` |
-| `photo_requirement` or `photoRequirement` or `Photo requirement` | `Question.photoRequirement` | Enum: `Always`, `Only when no/unsatisfactory` |
+| `chaptername` | `Chapter.name` | |
+| `chapterorder` | `Chapter.order` | |
+| `questionid` | `Question.id` | |
+| `questiontext` | `Question.questionText` | |
+| `questiondesc` | `Question.description` | |
+| `questionordernumber` | `Question.orderNumber` | |
+| `answertype` | `Question.answerOption` | Enum: `Yes\|No`, `Yes\|No\|N/A`, `Satisfactory\|Unsatisfactory`, `Satisfactory\|Unsatisfactory\|N/A` |
+| `photorequirement` | `Question.photoRequirement` | Enum: `Always`, `Only when unsatisfactory` |
+| `existingremedials` | `Question.existingRemedials` | Array; stored as a JSON blob. Remedial fields: `remedialname`, `remedialdesc`, `remediallocation`, `remedialduedate`, `remedialpriority` (`Low` / `High`) |
 
-**What happens next:** Questions are upserted into the local SQLite `questions` table with `source = 'checklist'`.
-
-**Response format notes:** The parser (`parseChecklistResponse`) handles several quirks:
-- Unwraps the `{ response: { checklist: "..." } }` envelope
-- Replaces smart/curly quotes (`\u201C`, `\u201D`, etc.) with straight quotes
-- Wraps concatenated JSON objects `{...},{...}` in array brackets `[{...},{...}]`
-- Handles double-encoded strings
+**What happens next:** Chapters are upserted via `chaptersDao.upsertChapters()` and questions (with their remedials) via `questionsDao.upsertQuestions()`.
 
 ---
 
-### 6. `upload-image` — Upload Inspection Photo
+### 5. `app_upload-image` — Upload Inspection Photo
 
 | | |
 |---|---|
-| **Path** | `upload-image` |
+| **Path** | `app_upload-image` |
 | **Method** | POST |
 | **Auth required** | Yes |
 | **Source file** | `lib/providers/inspection_provider.dart` |
@@ -261,7 +252,8 @@ Content-Type: application/json
 ```json
 {
   "response": {
-    "image_id": "img_abc123"
+    "image_id": "img_abc123",
+    "image_url": "<url>"
   }
 }
 ```
@@ -269,15 +261,15 @@ Content-Type: application/json
 **What happens next:**
 - The returned `image_id` is collected into a list.
 - If upload fails, the error is logged but submission continues (photos are best-effort).
-- All collected `image_id` values are included in the `completed-inspection` payload.
+- All collected `image_id` values are included in the `app_completed-inspection` payload.
 
 ---
 
-### 7. `completed-inspection` — Submit Completed Inspection
+### 6. `app_completed-inspection` — Submit Completed Inspection
 
 | | |
 |---|---|
-| **Path** | `completed-inspection` |
+| **Path** | `app_completed-inspection` |
 | **Method** | POST |
 | **Auth required** | Yes |
 | **Source file** | `lib/providers/inspection_provider.dart` |
@@ -291,11 +283,11 @@ Content-Type: application/json
   "asset_id": "<asset-id>",
   "answers": [
     {
-      "question_text": "Is the pressure gauge in the green zone?",
+      "question_text": "Does this door self-close fully into its frame?",
       "answer_text": "Yes"
     },
     {
-      "question_text": "Is the safety pin intact?",
+      "question_text": "Is the seal intact?",
       "answer_text": "No"
     }
   ],
@@ -308,7 +300,7 @@ Content-Type: application/json
 
 **Validation (client-side, before submission):**
 - Every question with answer options must have a selected answer.
-- If a photo is required (based on `PhotoRequirement` rules and the selected answer), at least one photo must be attached.
+- If a photo is required (based on `photorequirement` rules and the selected answer), at least one photo must be attached.
 
 ---
 
@@ -322,21 +314,18 @@ Orchestrated by `SyncRepository.syncAll()`, driven by `InitialSyncNotifier`.
 Login
   |
   v
-Phase 1: fetchbuildings  ──>  upsert into buildings table
+Phase 1: app_fetchbuildings         ──>  upsert into buildings table
   |
   v
-Phase 2: fetchassets      ──>  one call per building (sequential)
-  |                             upsert into assets table
+Phase 2: app_fetch_all_assets        ──>  one call per building
+  |                                        upsert into assets table
+  |                                        capture checklistlastmodified per asset
   v
-Phase 3: fetchchecklist   ──>  one call per asset (parallel, max 5)
-                                upsert into questions table
+Phase 3: app_fetch_checklist_single  ──>  one call per STALE asset (parallel, max 5)
+                                           upsert into chapters + questions tables
 ```
 
 The initial sync screen (`lib/screens/initial_sync_screen.dart`) shows progress through each phase. A retry button is available if any phase fails.
-
-### Background Sync (on-demand)
-
-When the user navigates to an asset detail or inspection screen, `checklistStreamProvider` fires a background call to `fetchchecklist` for that asset. This refreshes the local data without blocking the UI.
 
 ### Data Storage
 
@@ -366,8 +355,6 @@ All synced data is stored locally in a SQLite database (via Drift ORM). The app 
 | `lib/utils/api_parsers.dart` | Response parsing & normalization for all data endpoints |
 | `lib/providers/inspection_provider.dart` | Photo upload & inspection submission |
 | `lib/providers/initial_sync_provider.dart` | Initial sync UI state machine |
-| `lib/providers/checklist_provider.dart` | Background checklist sync & streaming |
-| `lib/services/connectivity_service.dart` | Online/offline detection |
 | `lib/models/building.dart` | Building model & JSON parsing |
 | `lib/models/asset.dart` | Asset model & JSON parsing |
-| `lib/models/question.dart` | Question model, answer options & photo requirement enums |
+| `lib/models/question.dart` | Question/Chapter/Remedial models, answer & photo-requirement enums |

@@ -34,7 +34,9 @@ class InitialSyncState {
   String get statusMessage => switch (currentStep) {
         SyncStep.signingIn => 'Signed in',
         SyncStep.downloadingBuildings => 'Downloading buildings...',
-        SyncStep.downloadingAssets => 'Downloading assets...',
+        SyncStep.downloadingAssets => total > 0
+            ? 'Downloading assets ($completed / $total blocks)'
+            : 'Downloading assets...',
         SyncStep.downloadingChecklists => total > 0
             ? 'Downloading checklists ($completed / $total)'
             : 'Downloading checklists...',

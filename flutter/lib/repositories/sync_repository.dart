@@ -29,10 +29,23 @@ class SyncRepository {
   /// are passed to the checklist phase — everything else is skipped.
   ///
   /// Calls [onProgress] as each phase advances.
-  Future<void> syncAll({SyncProgressCallback? onProgress}) async {
+  ///
+  /// [isCancelled] is polled at phase boundaries and between pooled items; when
+  /// it returns true the sync stops issuing new work and returns early, so it
+  /// won't keep writing rows after the caller has abandoned it. In-flight DB
+  /// writes already dispatched will still complete — the caller is responsible
+  /// for wiping afterwards.
+  Future<void> syncAll({
+    SyncProgressCallback? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final cancelled = isCancelled ?? () => false;
+
     // Phase 1: Buildings
+    if (cancelled()) return;
     onProgress?.call(SyncPhase.buildings, 0, 0);
     await syncBuildings();
+    if (cancelled()) return;
 
     // Phase 2: Assets. Snapshot the stored checklist timestamps *before* we
     // overwrite them, so we can diff below.
@@ -40,11 +53,19 @@ class SyncRepository {
         await _db.assetsDao.getChecklistLastModifiedByAsset();
     final buildingIds = await _db.buildingsDao.getAllBuildingIds();
     onProgress?.call(SyncPhase.assets, 0, buildingIds.length);
+    final perBuildingTimestamps = await _runPooled(
+      items: buildingIds,
+      maxConcurrent: 5,
+      isCancelled: cancelled,
+      action: syncAssetsForBuilding,
+      onItemComplete: (completed) {
+        onProgress?.call(SyncPhase.assets, completed, buildingIds.length);
+      },
+    );
+    if (cancelled()) return;
     final freshChecklistTimestamps = <String, DateTime?>{};
-    for (var i = 0; i < buildingIds.length; i++) {
-      final fresh = await syncAssetsForBuilding(buildingIds[i]);
-      freshChecklistTimestamps.addAll(fresh);
-      onProgress?.call(SyncPhase.assets, i + 1, buildingIds.length);
+    for (final map in perBuildingTimestamps) {
+      freshChecklistTimestamps.addAll(map);
     }
 
     // Phase 3: Checklists. Only fetch for assets whose checklistLastModified
@@ -63,6 +84,7 @@ class SyncRepository {
     await _runPooled(
       items: staleAssetIds,
       maxConcurrent: 5,
+      isCancelled: cancelled,
       // We've already confirmed these assets are stale via the timestamp diff
       // above, so skip the per-call freshness check.
       action: (assetId) => syncChecklistForAsset(assetId, force: true),
@@ -102,24 +124,36 @@ class SyncRepository {
   }
 
   /// Runs [action] on each item with at most [maxConcurrent] in flight.
-  Future<void> _runPooled<T>({
+  ///
+  /// Returns each item's result in completion order. Callers that don't need
+  /// the results can ignore the returned list (e.g. when [action] is `void`).
+  ///
+  /// When [isCancelled] returns true, no further items are dispatched; the
+  /// already-running ones are awaited so the pool unwinds cleanly.
+  Future<List<R>> _runPooled<T, R>({
     required List<T> items,
     required int maxConcurrent,
-    required Future<void> Function(T item) action,
+    required Future<R> Function(T item) action,
     void Function(int completed)? onItemComplete,
+    bool Function()? isCancelled,
   }) async {
+    final cancelled = isCancelled ?? () => false;
     var completed = 0;
     var index = 0;
     final active = <Future<void>>{};
+    final results = <R>[];
 
     Future<void> runOne(T item) async {
-      await action(item);
+      final result = await action(item);
+      results.add(result);
       completed++;
       onItemComplete?.call(completed);
     }
 
-    while (index < items.length) {
-      while (active.length < maxConcurrent && index < items.length) {
+    while (index < items.length && !cancelled()) {
+      while (active.length < maxConcurrent &&
+          index < items.length &&
+          !cancelled()) {
         final future = runOne(items[index++]);
         active.add(future);
         future.whenComplete(() => active.remove(future));
@@ -129,6 +163,7 @@ class SyncRepository {
       }
     }
     await Future.wait(active);
+    return results;
   }
 
   /// Sync all buildings from API into SQLite.

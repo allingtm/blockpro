@@ -31,6 +31,35 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
         .get();
   }
 
+  /// Stream of all (buildingId, dueDate) pairs. Used to derive per-building
+  /// red/amber badge counts; consumers compute the counts in Dart so the
+  /// "what is overdue right now" logic stays in one place ([assetStatusFor]).
+  Stream<List<({String buildingId, DateTime? dueDate})>>
+      watchBuildingDueDates() {
+    final query = selectOnly(assetsTable)
+      ..addColumns([assetsTable.buildingId, assetsTable.dueDate]);
+    return query.watch().map((rows) => rows
+        .map((r) => (
+              buildingId: r.read(assetsTable.buildingId)!,
+              dueDate: r.read(assetsTable.dueDate),
+            ))
+        .toList());
+  }
+
+  /// Stream of all (assetId, buildingId) pairs. Used to roll asset-level
+  /// signals (e.g. saved drafts) up to their building for list badges.
+  Stream<List<({String assetId, String buildingId})>>
+      watchAssetBuildingPairs() {
+    final query = selectOnly(assetsTable)
+      ..addColumns([assetsTable.id, assetsTable.buildingId]);
+    return query.watch().map((rows) => rows
+        .map((r) => (
+              assetId: r.read(assetsTable.id)!,
+              buildingId: r.read(assetsTable.buildingId)!,
+            ))
+        .toList());
+  }
+
   Future<int> countAssetsForBuilding(String buildingId) async {
     final count = countAll();
     final query = selectOnly(assetsTable)
@@ -68,6 +97,24 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
           ..limit(1))
         .getSingleOrNull();
     return row?.checklistLastModified;
+  }
+
+  // ── Mutations ──────────────────────────────────────────
+
+  /// Optimistically mark an asset as just inspected: set [lastCompleted] and,
+  /// when known, the recomputed [dueDate]. Leaves [dueDate] untouched when null
+  /// so the next sync supplies the authoritative date.
+  Future<void> markCompleted(
+    String assetId, {
+    required DateTime lastCompleted,
+    DateTime? dueDate,
+  }) {
+    return (update(assetsTable)..where((t) => t.id.equals(assetId))).write(
+      AssetsTableCompanion(
+        lastCompleted: Value(lastCompleted),
+        dueDate: dueDate == null ? const Value.absent() : Value(dueDate),
+      ),
+    );
   }
 
   // ── Upsert (API sync) ─────────────────────────────────

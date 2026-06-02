@@ -93,7 +93,7 @@ This section is important. Please read it.
 ### How an in-progress inspection is held
 While you're answering questions in an inspection, your answers and any photos you've selected are held **in the app's memory**. They are not saved to the device as you go. They are only sent to the server — and counted as a recorded inspection — when you tap **Submit**.
 
-There is no draft, no auto-save, and no resume.
+If you leave an incomplete inspection via **Save draft and exit**, your answers and photos are saved locally as a draft and restored when you reopen that asset; the draft is cleared once you submit. There is no auto-save *during* editing, so a crash before saving still loses unsaved answers.
 
 ### What a refresh can do during an inspection
 Refreshes can still happen while you're inspecting. For example:
