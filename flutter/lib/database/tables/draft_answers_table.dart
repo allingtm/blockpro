@@ -17,4 +17,7 @@ class DraftAnswersTable extends Table {
   TextColumn get questionId => text()();
   TextColumn get answerText => text().nullable()();
   TextColumn get photoPaths => text().nullable()();
+
+  /// JSON-encoded `NewRemedial` raised against this question, or null.
+  TextColumn get remedialJson => text().nullable()();
 }

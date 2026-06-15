@@ -20,6 +20,19 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
         .watch();
   }
 
+  /// Reactive, case-insensitive search of a building's assets. Matches anywhere
+  /// in the task name or the nickname (the part shown after the dash).
+  Stream<List<AssetsTableData>> watchAssetsMatching(
+      String buildingId, String query) {
+    final like = '%${query.toLowerCase()}%';
+    return (select(assetsTable)
+          ..where((t) =>
+              t.buildingId.equals(buildingId) &
+              (t.taskName.lower().like(like) | t.nickname.lower().like(like)))
+          ..orderBy([(t) => OrderingTerm.asc(t.taskName)]))
+        .watch();
+  }
+
   // ── One-shot queries ───────────────────────────────────
 
   Future<List<AssetsTableData>> getAssetsPaginated(

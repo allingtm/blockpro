@@ -20,6 +20,16 @@ class BuildingsDao extends DatabaseAccessor<AppDatabase>
         .watch();
   }
 
+  /// Reactive, case-insensitive search across the full buildings table.
+  /// Matches anywhere in the name (covers the code after the dash too).
+  Stream<List<BuildingsTableData>> watchBuildingsMatching(String query) {
+    final like = '%${query.toLowerCase()}%';
+    return (select(buildingsTable)
+          ..where((t) => t.name.lower().like(like))
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+        .watch();
+  }
+
   // ── One-shot queries ───────────────────────────────────
 
   Future<List<BuildingsTableData>> getBuildingsPaginated(

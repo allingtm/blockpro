@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -6,7 +8,10 @@ import 'core/router/app_router.dart';
 import 'database/database.dart';
 import 'providers/auth_provider.dart';
 import 'providers/database_provider.dart';
+import 'providers/outbox_drain_provider.dart';
+import 'providers/outbox_provider.dart';
 import 'providers/theme_provider.dart';
+import 'utils/draft_photo_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,8 +34,20 @@ Future<void> main() async {
     ],
   );
   final authRepo = container.read(authRepositoryProvider);
-  authRepo.onSignOut = () => database.clearAllData();
+  // On sign-out, purge the offline outbox (queued completions + their photos)
+  // and draft photos BEFORE wiping the DB cache, so a different user logging in
+  // next can never inherit them. Awaited via auth_repository so it completes
+  // before the next login.
+  authRepo.onSignOut = () async {
+    await container.read(outboxStoreProvider).clearAll();
+    await const DraftPhotoStore().deleteAllPhotos();
+    await database.clearAllData();
+  };
   await authRepo.initialize();
+
+  // Send anything queued from a previous (offline) session. Bails internally if
+  // still offline; recovers any entry left mid-send by a crash.
+  unawaited(container.read(outboxDrainerProvider).drain());
 
   runApp(
     UncontrolledProviderScope(
@@ -40,11 +57,41 @@ Future<void> main() async {
   );
 }
 
-class MainApp extends ConsumerWidget {
+class MainApp extends ConsumerStatefulWidget {
   const MainApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends ConsumerState<MainApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Returning to the foreground is a good moment to flush the outbox — the
+    // user may have regained connectivity while the app was backgrounded.
+    if (state == AppLifecycleState.resumed) {
+      ref.read(outboxDrainerProvider).drain();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Keep the offline → online drain trigger alive for the whole session.
+    ref.watch(outboxDrainTriggerProvider);
+
     final router = ref.watch(goRouterProvider);
     final lightTheme = ref.watch(lightThemeProvider);
     final darkTheme = ref.watch(darkThemeProvider);

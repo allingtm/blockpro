@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/asset.dart';
 import '../models/building.dart';
+import '../models/outbox_entry.dart';
 import '../providers/assets_provider.dart';
 import '../providers/building_badges_provider.dart';
 import '../providers/drafts_provider.dart';
+import '../providers/outbox_drain_provider.dart';
+import '../providers/outbox_provider.dart';
 import '../theme/app_theme_tokens.dart';
 import '../utils/asset_status.dart';
 import '../utils/date_format.dart';
@@ -27,6 +32,8 @@ class BlockInspectionsScreen extends ConsumerStatefulWidget {
 class _BlockInspectionsScreenState
     extends ConsumerState<BlockInspectionsScreen> {
   final _scrollController = ScrollController();
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -37,6 +44,7 @@ class _BlockInspectionsScreenState
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -74,6 +82,38 @@ class _BlockInspectionsScreenState
       return const _NoInspectionsMessage();
     }
 
+    final query = _query.trim();
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: AppTextField(
+            controller: _searchController,
+            hint: 'Search inspections…',
+            prefixIcon: Icons.search,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) => setState(() => _query = value),
+            suffixIcon: _searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _query = '');
+                    },
+                  ),
+          ),
+        ),
+        Expanded(
+          child: query.isEmpty
+              ? _buildPaginatedList(state)
+              : _buildSearchResults(query),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaginatedList(PaginatedAssetsState state) {
     return RefreshIndicator(
       onRefresh: () => ref
           .read(assetsNotifierProvider(widget.building.id).notifier)
@@ -97,6 +137,31 @@ class _BlockInspectionsScreenState
       ),
     );
   }
+
+  Widget _buildSearchResults(String query) {
+    final results = ref
+            .watch(assetSearchResultsProvider(
+              (buildingId: widget.building.id, query: query),
+            ))
+            .valueOrNull ??
+        const <Asset>[];
+    if (results.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No inspections match',
+            style: TextStyle(fontSize: 16, color: context.tokens.textFaint),
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      itemCount: results.length,
+      itemBuilder: (context, index) => _InspectionCard(asset: results[index]),
+    );
+  }
 }
 
 class _InspectionCard extends ConsumerWidget {
@@ -105,7 +170,12 @@ class _InspectionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = assetStatusFor(asset);
+    final outboxStatus = ref.watch(assetOutboxStatusProvider)[asset.id];
+    // A queued completion keeps the card green even after a cache wipe has reset
+    // the asset's optimistic due-date (the status is derived from the durable
+    // outbox, not the wipeable asset row).
+    final status =
+        outboxStatus != null ? AssetStatus.green : assetStatusFor(asset);
     final stripe = colourForStatus(status);
     final tokens = context.tokens;
     final hasDraft = (ref.watch(assetDraftsProvider).valueOrNull ??
@@ -141,6 +211,13 @@ class _InspectionCard extends ConsumerWidget {
                       const SizedBox(width: 8),
                       const DraftChip(),
                     ],
+                    if (outboxStatus != null) ...[
+                      const SizedBox(width: 8),
+                      OutboxStatusChip(
+                        status: outboxStatus,
+                        onTap: _retryHandler(context, ref, outboxStatus),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -168,6 +245,53 @@ class _InspectionCard extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Tap action for the outbox chip: `failed` retries immediately, `needsReview`
+  /// confirms first (it may already have reached the server), the rest are inert.
+  VoidCallback? _retryHandler(
+      BuildContext context, WidgetRef ref, OutboxStatus status) {
+    switch (status) {
+      case OutboxStatus.failed:
+        return () => _retry(ref);
+      case OutboxStatus.needsReview:
+        return () => _confirmAndRetry(context, ref);
+      case OutboxStatus.pending:
+      case OutboxStatus.sending:
+        return null;
+    }
+  }
+
+  Future<void> _retry(WidgetRef ref) async {
+    final entry = ref.read(assetQueuedEntryProvider(asset.id));
+    if (entry == null) return;
+    await ref.read(outboxStoreProvider).mutate(
+          entry.submissionId,
+          (e) => e.copyWith(status: OutboxStatus.pending, clearError: true),
+        );
+    ref.read(outboxEntriesProvider.notifier).refresh();
+    unawaited(ref.read(outboxDrainerProvider).drain());
+  }
+
+  Future<void> _confirmAndRetry(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Re-send inspection?'),
+        content: const Text(
+          'This inspection may already have been submitted. Re-send it anyway?',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Re-send')),
+        ],
+      ),
+    );
+    if (ok == true) await _retry(ref);
   }
 }
 

@@ -197,11 +197,13 @@ class AuthRepository {
     await _persistAuthData();
 
     // Emit logout immediately so the UI navigates away without waiting
-    // for the DB wipe (which can be slow with large datasets).
+    // for the cleanup (which can be slow with large datasets).
     _authUserSubject.add(BubbleAuthUser(loggedIn: false));
 
-    // Fire-and-forget: wipe cached data in the background.
-    onSignOut?.call();
+    // Await the cleanup so it fully completes before the next login: it purges
+    // the offline outbox (queued completions + photos) and then wipes the DB
+    // cache. Awaiting prevents a race where a new user logs in mid-purge.
+    await onSignOut?.call();
   }
 
   /// Check if the current token is expired.

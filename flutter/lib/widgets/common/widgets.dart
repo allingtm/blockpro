@@ -6,5 +6,6 @@ export 'blockpro_logo.dart';
 export 'draft_chip.dart';
 export 'loading_dialog.dart';
 export 'offline_indicator.dart';
+export 'outbox_status_chip.dart';
 export 'refresh_progress_dialog.dart';
 export 'striped_card.dart';

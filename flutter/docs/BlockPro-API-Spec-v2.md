@@ -540,12 +540,46 @@ Mark an inspection as completed.
 | Auth | Bearer Token (required) |
 | Content-Type | application/json |
 
-**Request Body:**
+**Request Body (as sent by the app):**
 ```json
 {
-  "_wf_request_data": "required — Bubble workflow request data containing inspection answers and metadata"
+  "asset_id": "1776160199545x786906369052976900",
+  "answers": [
+    { "question": "Is the door undamaged?", "answer": "Satisfactory" },
+    {
+      "question": "Does the closer work?",
+      "answer": "Unsatisfactory",
+      "remedial": {
+        "remedialname": "Replace door closer",
+        "remediallocation": "1st floor landing",
+        "remedialdesc": "Closer leaking oil, door not latching",
+        "remedialpriority": "High",
+        "registeritems": [
+          {
+            "registeritemref": "Wallbox1",
+            "registeritemfloor": "1st",
+            "registeritemlocation": "Landing"
+          }
+        ]
+      }
+    }
+  ],
+  "photo_ids": ["<image id>", "..."]
 }
 ```
+
+- `photo_ids` is only included when photos were uploaded (via `app_upload-image_Adam`).
+- **`remedial` (optional, per answer)** — present only on answers where the
+  inspector raised a remedial against the question (the app offers this when
+  the answer is negative: `No` / `Unsatisfactory`, at most one per question).
+  Field names match the read-side remedial object (§5.5): `remedialname`
+  (always present, non-empty), `remedialpriority` (`Low` | `High`, always
+  present), `remediallocation` / `remedialdesc` (omitted when empty),
+  `registeritems` (omitted when empty — echoes the asset's register-item
+  objects, §5.3, that the remedial relates to). `remedialduedate` is NOT sent —
+  the server assigns it. The Bubble workflow must be extended to create an
+  ExistingRemedial from each `remedial` object and attach it to the matching
+  question; unknown/absent keys must not break older payloads.
 
 **Success Response (200):**
 ```json
@@ -554,8 +588,6 @@ Mark an inspection as completed.
   "response": {}
 }
 ```
-
-**Note:** The exact structure of `_wf_request_data` needs to be determined from the Bubble workflow configuration.
 
 ---
 
@@ -780,7 +812,7 @@ The following items need clarification from the Bubble backend:
 
 5. **Single building fetch removed** — The v1 endpoint `/wf/fetchbuilding` (fetch single building by ID) has no direct replacement. Confirm whether this functionality is still needed or if it should be handled client-side by filtering the `app_fetchbuildings` response.
 
-6. **Inspection completion payload** — What data must be sent to `app_completed-inspection` (list of question answer IDs? inline answers? asset ID?) needs to be defined.
+6. ~~**Inspection completion payload**~~ — **PROPOSED in §5.10** (pending backend confirmation): `asset_id` + inline `answers` (question text + answer), optional per-answer `remedial` object for remedials raised by the inspector, optional `photo_ids`. The Bubble workflow must be extended to consume the `remedial` object.
 
 7. ~~**Option set values**~~ — **PARTIALLY RESOLVED in v2.1.** The following values are now documented:
    - `answertype`: `"Yes|No"`, `"Yes|No|N/A"`, `"Satisfactory|Unsatisfactory"`, `"Satisfactory|Unsatisfactory|N/A"`

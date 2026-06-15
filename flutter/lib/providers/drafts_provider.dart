@@ -1,13 +1,33 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/new_remedial.dart';
 import 'database_provider.dart';
 
 /// A single restored draft answer for a question.
 class DraftAnswer {
   final String? answerText;
   final List<String> photoPaths;
+  final NewRemedial? remedial;
 
-  const DraftAnswer({this.answerText, this.photoPaths = const []});
+  const DraftAnswer({
+    this.answerText,
+    this.photoPaths = const [],
+    this.remedial,
+  });
+
+  /// Decode a draft row's `remedialJson` column; null on missing/malformed.
+  static NewRemedial? decodeRemedial(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      return NewRemedial.fromJson(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// Loads the saved draft for an asset as a `questionId -> DraftAnswer` map.
@@ -25,6 +45,7 @@ final draftAnswersProvider = FutureProvider.autoDispose
         photoPaths: (row.photoPaths == null || row.photoPaths!.isEmpty)
             ? const []
             : row.photoPaths!.split('\n'),
+        remedial: DraftAnswer.decodeRemedial(row.remedialJson),
       ),
   };
 });

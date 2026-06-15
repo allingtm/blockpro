@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/connectivity_provider.dart';
+import '../../providers/outbox_provider.dart';
 import '../../theme/app_palettes.dart';
 import 'blockpro_logo.dart';
 
@@ -30,6 +31,7 @@ class BlockProAppBar extends ConsumerWidget implements PreferredSizeWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isOfflineAsync = ref.watch(isOfflineProvider);
     final isOffline = isOfflineAsync.valueOrNull ?? false;
+    final pendingUploads = ref.watch(pendingCountProvider);
     final canPop = ModalRoute.of(context)?.canPop ?? false;
 
     return AppBar(
@@ -74,6 +76,30 @@ class BlockProAppBar extends ConsumerWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
+        if (pendingUploads > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Tooltip(
+              message:
+                  '$pendingUploads inspection${pendingUploads == 1 ? '' : 's'} waiting to upload',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cloud_upload_outlined,
+                      color: Colors.white70, size: 20),
+                  const SizedBox(width: 3),
+                  Text(
+                    '$pendingUploads',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         if (isOffline)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8),
@@ -87,7 +113,7 @@ class BlockProAppBar extends ConsumerWidget implements PreferredSizeWidget {
         if (trailing != null) trailing!,
         // Reserve right-edge space so the centred title aligns with the
         // logo on the left in the default (no-back-arrow) case.
-        if (!canPop && trailing == null && !isOffline)
+        if (!canPop && trailing == null && !isOffline && pendingUploads == 0)
           const SizedBox(width: 56),
       ],
     );

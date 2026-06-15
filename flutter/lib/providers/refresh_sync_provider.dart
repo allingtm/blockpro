@@ -5,7 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/database.dart';
 import '../repositories/sync_repository.dart';
+import '../services/outbox_drainer.dart';
+import '../utils/frequency.dart';
+import '../utils/outbox_store.dart';
 import 'database_provider.dart';
+import 'outbox_drain_provider.dart';
+import 'outbox_provider.dart';
 import 'sync_provider.dart';
 
 /// Phases shown in the manual-refresh loading dialog.
@@ -75,10 +80,13 @@ class RefreshState {
 }
 
 class RefreshNotifier extends StateNotifier<RefreshState> {
-  RefreshNotifier(this._db, this._sync) : super(const RefreshState());
+  RefreshNotifier(this._db, this._sync, this._outboxStore, this._drainer)
+      : super(const RefreshState());
 
   final AppDatabase _db;
   final SyncRepository _sync;
+  final OutboxStore _outboxStore;
+  final OutboxDrainer _drainer;
 
   bool _cancelRequested = false;
 
@@ -159,6 +167,28 @@ class RefreshNotifier extends StateNotifier<RefreshState> {
     if (mounted) {
       state = state.copyWith(step: RefreshStep.complete, progress: 1.0);
     }
+
+    // The refresh re-synced asset due-dates from the server, which doesn't know
+    // about completions still queued in the (wipe-proof) outbox. Re-apply the
+    // optimistic completion so those assets don't flip back to overdue, then
+    // drain now that connectivity is confirmed.
+    await _reassertQueuedCompletions();
+    unawaited(_drainer.drain());
+  }
+
+  /// Re-applies the optimistic "completed" state for every asset that still has
+  /// a queued completion, after a refresh has overwritten asset rows from the
+  /// server.
+  Future<void> _reassertQueuedCompletions() async {
+    final entries = await _outboxStore.readAll();
+    for (final e in entries) {
+      final completedAt = DateTime.fromMillisecondsSinceEpoch(e.createdAt);
+      await _db.assetsDao.markCompleted(
+        e.assetId,
+        lastCompleted: completedAt,
+        dueDate: nextDueDate(e.frequency, from: completedAt),
+      );
+    }
   }
 
   /// Clamps [candidate] so progress only ever moves forward — out-of-order
@@ -201,5 +231,7 @@ final refreshNotifierProvider =
     StateNotifierProvider<RefreshNotifier, RefreshState>((ref) {
   final db = ref.watch(appDatabaseProvider);
   final sync = ref.watch(syncRepositoryProvider);
-  return RefreshNotifier(db, sync);
+  final outboxStore = ref.watch(outboxStoreProvider);
+  final drainer = ref.watch(outboxDrainerProvider);
+  return RefreshNotifier(db, sync, outboxStore, drainer);
 });

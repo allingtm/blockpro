@@ -1,17 +1,24 @@
 import 'dart:io';
+import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/asset.dart';
+import '../models/new_remedial.dart';
+import '../models/outbox_entry.dart';
 import '../models/question.dart';
+import '../models/register_item.dart';
 import '../providers/building_badges_provider.dart';
 import '../providers/buildings_provider.dart';
 import '../providers/checklist_provider.dart';
 import '../providers/drafts_provider.dart';
 import '../providers/inspection_provider.dart';
+import '../providers/outbox_provider.dart';
 import '../theme/app_palettes.dart';
 import '../theme/app_theme_tokens.dart';
 import '../utils/asset_status.dart';
@@ -66,27 +73,69 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
+          // A queued (offline-completed) entry takes precedence over the draft
+          // (the draft was deleted at enqueue): re-opening the asset restores
+          // the completion's answers/photos so the user can review or amend.
+          final queued =
+              ref.watch(assetQueuedEntryProvider(widget.asset.id));
+          final queuedAnswers = <String, String>{};
+          final queuedPhotos = <String, List<String>>{};
+          final queuedRemedials = <String, NewRemedial>{};
+          if (queued != null) {
+            for (final a in queued.answers) {
+              if (a.questionId != null) {
+                queuedAnswers[a.questionId!] = a.answer;
+                if (a.remedial != null) {
+                  queuedRemedials[a.questionId!] = a.remedial!;
+                }
+              }
+            }
+            for (final ph in queued.photos) {
+              if (ph.questionId != null) {
+                (queuedPhotos[ph.questionId!] ??= []).add(ph.localPath);
+              }
+            }
+          }
+
           final answers = <QuestionAnswer>[];
           for (final chapter in chapters) {
             for (final q in chapter.questions) {
-              final saved = draft?[q.id];
+              String? selected;
+              List<File> photos;
+              NewRemedial? remedial;
+              if (queued != null) {
+                final a = queuedAnswers[q.id];
+                selected = (a == null || a.isEmpty) ? null : a;
+                photos = (queuedPhotos[q.id] ?? const [])
+                    .map((p) => File(p))
+                    .toList();
+                remedial = queuedRemedials[q.id];
+              } else {
+                final saved = draft?[q.id];
+                selected = (saved?.answerText?.isEmpty ?? true)
+                    ? null
+                    : saved!.answerText;
+                photos = saved == null
+                    ? const []
+                    : saved.photoPaths.map((p) => File(p)).toList();
+                remedial = saved?.remedial;
+              }
               answers.add(QuestionAnswer(
                 question: q,
                 chapterName: chapter.name,
-                selectedAnswer:
-                    (saved?.answerText?.isEmpty ?? true) ? null : saved!.answerText,
-                photos: saved == null
-                    ? const []
-                    : saved.photoPaths.map((p) => File(p)).toList(),
+                selectedAnswer: selected,
+                photos: photos,
+                remedial: remedial,
               ));
             }
           }
-          final restored = (draft?.isNotEmpty ?? false);
+          final restored = queued == null && (draft?.isNotEmpty ?? false);
           return _InspectionForm(
             asset: widget.asset,
             answers: answers,
             imagePicker: _imagePicker,
             draftRestored: restored,
+            queuedStatus: queued?.status,
           );
         },
       ),
@@ -132,11 +181,16 @@ class _InspectionForm extends ConsumerStatefulWidget {
   final ImagePicker imagePicker;
   final bool draftRestored;
 
+  /// Non-null when this asset has a queued offline completion — drives the
+  /// "not yet submitted" banner.
+  final OutboxStatus? queuedStatus;
+
   const _InspectionForm({
     required this.asset,
     required this.answers,
     required this.imagePicker,
     this.draftRestored = false,
+    this.queuedStatus,
   });
 
   @override
@@ -149,9 +203,32 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
   final Set<int> _explicitlyExpanded = {};
   VoidCallback? _dismissLoader;
 
+  /// Parsed once — the asset's register items, offered as "related items"
+  /// choices on any remedial the inspector raises.
+  late final List<RegisterItem> _registerItems = widget.asset.registerItems;
+
+  /// Frozen at first build so the inspection notifier keeps a STABLE identity.
+  ///
+  /// The provider is a `family` keyed by this record (which includes the answers
+  /// list). If we recomputed it on every build, a rebuild triggered mid-submit —
+  /// e.g. `submit()` updating the outbox or `markCompleted` nudging the building
+  /// badges stream — would mint a brand-new notifier, and the `ref.listen` that
+  /// dismisses the loader and pops the screen would rebind to it, stranding the
+  /// in-flight submit's completion (the "Please wait" dialog would hang).
+  late final ({
+    String assetId,
+    String? frequency,
+    List<QuestionAnswer> answers,
+  }) _params;
+
   @override
   void initState() {
     super.initState();
+    _params = (
+      assetId: widget.asset.id,
+      frequency: widget.asset.frequency,
+      answers: widget.answers,
+    );
     if (widget.draftRestored) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -164,11 +241,7 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
 
   @override
   Widget build(BuildContext context) {
-    final params = (
-      assetId: widget.asset.id,
-      frequency: widget.asset.frequency,
-      answers: widget.answers,
-    );
+    final params = _params;
     final inspectionState = ref.watch(inspectionNotifierProvider(params));
     final notifier = ref.read(inspectionNotifierProvider(params).notifier);
 
@@ -180,10 +253,15 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
         _dismissLoader?.call();
         _dismissLoader = null;
       }
-      // Completion → snack + pop.
+      // Completion → snack + pop. Offline completions are queued, not sent, so
+      // never claim they were "submitted".
       if (next.isComplete && !(prev?.isComplete ?? false)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Inspection submitted successfully')),
+          SnackBar(
+            content: Text(next.isQueued
+                ? "Saved — it will be submitted automatically when you're back online"
+                : 'Inspection submitted successfully'),
+          ),
         );
         context.pop();
       }
@@ -198,6 +276,8 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
       },
       child: Column(
       children: [
+        if (widget.queuedStatus != null)
+          _QueuedBanner(status: widget.queuedStatus!),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
@@ -216,13 +296,28 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
                 answer: answer,
                 expanded: expanded,
                 disabled: inspectionState.isSubmitting,
+                registerItems: _registerItems,
                 onEdit: () =>
                     setState(() => _explicitlyExpanded.add(qIndex)),
-                onChange: (value) => notifier.updateAnswer(qIndex, value),
+                onChange: (value) {
+                  notifier.updateAnswer(qIndex, value);
+                  // A negative answer needs follow-up input (remedial form,
+                  // required photo) — keep the card in edit mode instead of
+                  // letting it auto-collapse; the Save button collapses it.
+                  final negative = value != null &&
+                      (answer.question.answerOption?.negativeLabels
+                              .contains(value) ??
+                          false);
+                  if (negative) {
+                    setState(() => _explicitlyExpanded.add(qIndex));
+                  }
+                },
                 onSave: () =>
                     setState(() => _explicitlyExpanded.remove(qIndex)),
-                onAddPhoto: () => _showPhotoOptions(notifier, qIndex),
+                onAddPhoto: () =>
+                    _pickPhoto(ImageSource.camera, notifier, qIndex),
                 onRemovePhoto: (i) => notifier.removePhoto(qIndex, i),
+                onRemedialChanged: (r) => notifier.updateRemedial(qIndex, r),
               );
             },
           ),
@@ -332,46 +427,55 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
     ref.invalidate(draftAnswersProvider(widget.asset.id));
   }
 
-  void _showPhotoOptions(InspectionNotifier notifier, int questionIndex) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Take Photo'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickPhoto(ImageSource.camera, notifier, questionIndex);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Choose from Gallery'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickPhoto(ImageSource.gallery, notifier, questionIndex);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _pickPhoto(ImageSource source, InspectionNotifier notifier,
       int questionIndex) async {
-    final picked = await widget.imagePicker.pickImage(
-      source: source,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+    // TEMPORARY: dev machines have no camera, so generate a placeholder image
+    // instead of opening the picker. Restore the image_picker call below for
+    // device builds.
+    //
+    // final picked = await widget.imagePicker.pickImage(
+    //   source: source,
+    //   maxWidth: 1920,
+    //   maxHeight: 1920,
+    //   imageQuality: 85,
+    // );
+    // if (picked != null) {
+    //   notifier.addPhoto(questionIndex, File(picked.path));
+    // }
+    final file = await _generateDummyPhoto();
+    notifier.addPhoto(questionIndex, file);
+  }
+
+  /// Renders a flat-colour placeholder with a timestamp and writes it to a
+  /// temp file, so the photo flow can be exercised without camera hardware.
+  Future<File> _generateDummyPhoto() async {
+    const width = 640, height = 480;
+    final rng = Random();
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final background = Color.fromARGB(255, 60 + rng.nextInt(140),
+        60 + rng.nextInt(140), 60 + rng.nextInt(140));
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Paint()..color = background,
     );
-    if (picked != null) {
-      notifier.addPhoto(questionIndex, File(picked.path));
-    }
+    final label = TextPainter(
+      text: TextSpan(
+        text: 'Dummy photo\n${DateTime.now()}',
+        style: const TextStyle(color: Colors.white, fontSize: 28),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: width.toDouble());
+    label.paint(
+        canvas, Offset((width - label.width) / 2, (height - label.height) / 2));
+    final image = await recorder.endRecording().toImage(width, height);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final dir = await getTemporaryDirectory();
+    final file = File(
+        '${dir.path}/dummy_photo_${DateTime.now().millisecondsSinceEpoch}.png');
+    await file.writeAsBytes(bytes!.buffer.asUint8List());
+    return file;
   }
 }
 
@@ -517,22 +621,26 @@ class _QuestionCard extends StatelessWidget {
     required this.answer,
     required this.expanded,
     required this.disabled,
+    required this.registerItems,
     required this.onEdit,
     required this.onChange,
     required this.onSave,
     required this.onAddPhoto,
     required this.onRemovePhoto,
+    required this.onRemedialChanged,
   });
 
   final int index;
   final QuestionAnswer answer;
   final bool expanded;
   final bool disabled;
+  final List<RegisterItem> registerItems;
   final VoidCallback onEdit;
   final ValueChanged<String?> onChange;
   final VoidCallback onSave;
   final VoidCallback onAddPhoto;
   final ValueChanged<int> onRemovePhoto;
+  final ValueChanged<NewRemedial> onRemedialChanged;
 
   bool get _answered {
     if (answer.question.answerOption != null) {
@@ -581,6 +689,24 @@ class _QuestionCard extends StatelessWidget {
                   color: tokens.textMuted,
                 ),
               ),
+              if (answer.question.existingRemedials.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const Icon(Icons.build_circle_outlined,
+                        size: 14, color: kStatusAmber),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${answer.question.existingRemedials.length} existing '
+                      'remedial${answer.question.existingRemedials.length == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: tokens.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -617,6 +743,10 @@ class _QuestionCard extends StatelessWidget {
             ),
           ),
         ],
+        if (answer.question.existingRemedials.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _RemedialsSection(remedials: answer.question.existingRemedials),
+        ],
         const SizedBox(height: 14),
         if (answer.question.answerOption != null)
           _OptionsField(
@@ -640,6 +770,20 @@ class _QuestionCard extends StatelessWidget {
             onRemove: onRemovePhoto,
           ),
         ],
+        // Auto-expands when the answer turns negative; unmounts (and the
+        // notifier clears the state) when it turns positive again.
+        if (answer.isNegative) ...[
+          const SizedBox(height: 12),
+          _AddRemedialSection(
+            // Remount when the in-state remedial is cleared externally so the
+            // text controllers reset along with it.
+            key: ValueKey(answer.question.id),
+            value: answer.remedial,
+            registerItems: registerItems,
+            enabled: !disabled,
+            onChanged: onRemedialChanged,
+          ),
+        ],
         const SizedBox(height: 14),
         SizedBox(
           width: double.infinity,
@@ -661,6 +805,324 @@ class _QuestionCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Inline form to raise a remedial against a question, shown only while the
+/// selected answer is negative (No / Unsatisfactory). Optional — leaving the
+/// title blank means no remedial is raised. At most one per question.
+class _AddRemedialSection extends StatefulWidget {
+  const _AddRemedialSection({
+    super.key,
+    required this.value,
+    required this.registerItems,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final NewRemedial? value;
+  final List<RegisterItem> registerItems;
+  final bool enabled;
+  final ValueChanged<NewRemedial> onChanged;
+
+  @override
+  State<_AddRemedialSection> createState() => _AddRemedialSectionState();
+}
+
+class _AddRemedialSectionState extends State<_AddRemedialSection> {
+  static const _priorities = ['Low', 'High'];
+
+  late final TextEditingController _titleController;
+  late final TextEditingController _locationController;
+  late final TextEditingController _descriptionController;
+  late String _priority;
+  late List<RegisterItem> _selectedItems;
+
+  @override
+  void initState() {
+    super.initState();
+    final v = widget.value;
+    _titleController = TextEditingController(text: v?.title ?? '');
+    _locationController = TextEditingController(text: v?.location ?? '');
+    _descriptionController = TextEditingController(text: v?.description ?? '');
+    _priority = v?.priority ?? 'Low';
+    _selectedItems = List.of(v?.registerItems ?? const []);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _locationController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _emit() {
+    widget.onChanged(NewRemedial(
+      title: _titleController.text,
+      location: _locationController.text,
+      description: _descriptionController.text,
+      priority: _priority,
+      registerItems: List.of(_selectedItems),
+    ));
+  }
+
+  bool _isSelected(RegisterItem item) =>
+      _selectedItems.any((s) => s.ref == item.ref);
+
+  void _toggleItem(RegisterItem item) {
+    setState(() {
+      if (_isSelected(item)) {
+        _selectedItems.removeWhere((s) => s.ref == item.ref);
+      } else {
+        _selectedItems.add(item);
+      }
+    });
+    _emit();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: kActionBlue.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: kActionBlue.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.build_circle_outlined,
+                  size: 16, color: kActionBlue),
+              const SizedBox(width: 6),
+              Text(
+                'Add a remedial (optional)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: tokens.textStrong,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Leave the title blank to skip.',
+            style: TextStyle(
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+              color: tokens.textFaint,
+            ),
+          ),
+          const SizedBox(height: 10),
+          AppTextField(
+            controller: _titleController,
+            label: 'Title',
+            hint: 'Enter title',
+            onChanged: widget.enabled ? (_) => _emit() : null,
+          ),
+          const SizedBox(height: 10),
+          AppTextField(
+            controller: _locationController,
+            label: 'Location',
+            hint: 'i.e. Electrical cupboard',
+            onChanged: widget.enabled ? (_) => _emit() : null,
+          ),
+          const SizedBox(height: 10),
+          AppTextField(
+            controller: _descriptionController,
+            label: 'Description',
+            hint: 'Enter description',
+            maxLines: 3,
+            onChanged: widget.enabled ? (_) => _emit() : null,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Priority',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: tokens.textStrong,
+            ),
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: _priority,
+            decoration: InputDecoration(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide(color: tokens.fieldBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide(color: tokens.fieldBorder),
+              ),
+            ),
+            items: _priorities
+                .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                .toList(),
+            onChanged: widget.enabled
+                ? (value) {
+                    if (value == null) return;
+                    setState(() => _priority = value);
+                    _emit();
+                  }
+                : null,
+          ),
+          if (widget.registerItems.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Related register items (optional)',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: tokens.textStrong,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final item in widget.registerItems)
+                  FilterChip(
+                    label: Text(item.displayLabel),
+                    selected: _isSelected(item),
+                    onSelected:
+                        widget.enabled ? (_) => _toggleItem(item) : null,
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Remedials raised against this question in prior inspections, shown so the
+/// inspector has context on known outstanding issues before answering.
+class _RemedialsSection extends StatelessWidget {
+  const _RemedialsSection({required this.remedials});
+
+  final List<Remedial> remedials;
+
+  static Color _priorityColor(String? priority) =>
+      switch (priority?.toLowerCase().trim()) {
+        'high' => kStatusRed,
+        'medium' => kStatusAmber,
+        'low' => kStatusGreen,
+        _ => kStatusAmber,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: kStatusAmber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: kStatusAmber.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.build_circle_outlined,
+                  size: 16, color: kStatusAmber),
+              const SizedBox(width: 6),
+              Text(
+                'Existing remedial${remedials.length == 1 ? '' : 's'} '
+                '(${remedials.length})',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: tokens.textStrong,
+                ),
+              ),
+            ],
+          ),
+          for (final r in remedials) ...[
+            const SizedBox(height: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        r.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textStrong,
+                        ),
+                      ),
+                    ),
+                    if (r.priority != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _priorityColor(r.priority)
+                              .withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          r.priority!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _priorityColor(r.priority),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (r.description != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    r.description!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: tokens.textMuted,
+                    ),
+                  ),
+                ],
+                if (r.location != null || r.dueDate != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (r.location != null) r.location!,
+                      if (r.dueDate != null)
+                        'due ${formatOrdinalDate(r.dueDate!)}',
+                    ].join(' — '),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: tokens.textFaint,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -830,6 +1292,60 @@ class _PhotoSection extends StatelessWidget {
           label: const Text('Add Photo'),
         ),
       ],
+    );
+  }
+}
+
+/// Banner shown when re-opening an asset that has a queued offline completion,
+/// so it's clear the inspection is saved but not yet sent to the server.
+class _QueuedBanner extends StatelessWidget {
+  const _QueuedBanner({required this.status});
+
+  final OutboxStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (IconData icon, String text, Color color) = switch (status) {
+      OutboxStatus.pending => (
+          Icons.cloud_upload_outlined,
+          "Saved — will be submitted automatically when you're back online",
+          kStatusAmber,
+        ),
+      OutboxStatus.sending => (
+          Icons.cloud_sync_outlined,
+          'Submitting…',
+          kActionBlue,
+        ),
+      OutboxStatus.needsReview => (
+          Icons.error_outline,
+          'Not yet submitted — review answers and tap Complete to re-submit',
+          kStatusRed,
+        ),
+      OutboxStatus.failed => (
+          Icons.error_outline,
+          'Upload failed — tap Complete to retry',
+          kStatusRed,
+        ),
+    };
+    return Container(
+      width: double.infinity,
+      color: color.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: context.tokens.textStrong,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

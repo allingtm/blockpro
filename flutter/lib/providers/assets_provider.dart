@@ -157,3 +157,16 @@ final assetsNotifierProvider = StateNotifierProvider.autoDispose.family<
   final sync = ref.watch(syncRepositoryProvider);
   return PaginatedAssetsNotifier(db, sync, buildingId);
 });
+
+/// Assets within a building matching a search query (task name or nickname).
+/// Returns an empty list when the query is blank. Keyed by (buildingId, query)
+/// so the building-detail screen can drive it from local search state.
+final assetSearchResultsProvider = StreamProvider.autoDispose
+    .family<List<Asset>, ({String buildingId, String query})>((ref, arg) {
+  final query = arg.query.trim();
+  if (query.isEmpty) return Stream.value(const <Asset>[]);
+  final db = ref.watch(appDatabaseProvider);
+  return db.assetsDao
+      .watchAssetsMatching(arg.buildingId, query)
+      .map((rows) => rows.map(PaginatedAssetsNotifier._toAsset).toList());
+});

@@ -154,3 +154,23 @@ final buildingsNotifierProvider = StateNotifierProvider<
   final sync = ref.watch(syncRepositoryProvider);
   return PaginatedBuildingsNotifier(db, sync);
 });
+
+/// Current text in the building-list search box ('' = not searching).
+final buildingSearchQueryProvider = StateProvider<String>((ref) => '');
+
+/// Buildings matching the active search query (empty list when not searching).
+final buildingSearchResultsProvider =
+    StreamProvider.autoDispose<List<Building>>((ref) {
+  final query = ref.watch(buildingSearchQueryProvider).trim();
+  if (query.isEmpty) return Stream.value(const <Building>[]);
+  final db = ref.watch(appDatabaseProvider);
+  return db.buildingsDao.watchBuildingsMatching(query).map(
+        (rows) => rows
+            .map((r) => Building(
+                  id: r.id,
+                  name: r.name,
+                  assetCount: r.assetCount,
+                ))
+            .toList(),
+      );
+});

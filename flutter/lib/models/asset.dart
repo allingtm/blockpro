@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'register_item.dart';
+
 /// Status colour returned by the backend for an asset.
 ///
 /// Maps to the `colour` field in the `app_fetch_all_assets` response.
@@ -126,6 +128,26 @@ class Asset {
           .map((m) => m['tooltipurl'])
           .whereType<String>()
           .where((s) => s.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Parse the raw v2 `assetregisteritems` string into structured items.
+  ///
+  /// Same format quirk as [tooltipUrlList]: comma-separated JSON objects
+  /// without array brackets, e.g. `{"registeritemref": "..."},{...}`.
+  List<RegisterItem> get registerItems {
+    final raw = assetRegisterItems;
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final wrapped = raw.trim().startsWith('[') ? raw : '[$raw]';
+      final decoded = jsonDecode(wrapped);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(RegisterItem.fromJson)
           .toList();
     } catch (_) {
       return const [];

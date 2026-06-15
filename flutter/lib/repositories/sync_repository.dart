@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../database/database.dart';
 import '../utils/api_parsers.dart';
+import '../utils/data_audit.dart';
 import 'api_repository.dart';
 
 /// Progress callback for [SyncRepository.syncAll].
@@ -35,9 +36,13 @@ class SyncRepository {
   /// won't keep writing rows after the caller has abandoned it. In-flight DB
   /// writes already dispatched will still complete — the caller is responsible
   /// for wiping afterwards.
+  /// [forceFullChecklists] bypasses the incremental timestamp diff so every
+  /// asset's checklist is re-fetched (used by the debug data-audit trigger to
+  /// capture every `app_fetch_checklist_single` response, including remedials).
   Future<void> syncAll({
     SyncProgressCallback? onProgress,
     bool Function()? isCancelled,
+    bool forceFullChecklists = false,
   }) async {
     final cancelled = isCancelled ?? () => false;
 
@@ -73,12 +78,14 @@ class SyncRepository {
     final staleAssetIds = <String>[];
     for (final entry in freshChecklistTimestamps.entries) {
       final stored = storedChecklistTimestamps[entry.key];
-      if (_needsResync(stored: stored, fresh: entry.value)) {
+      if (forceFullChecklists ||
+          _needsResync(stored: stored, fresh: entry.value)) {
         staleAssetIds.add(entry.key);
       }
     }
     debugPrint(
-        'Incremental checklist sync: ${staleAssetIds.length} of ${freshChecklistTimestamps.length} assets need refresh');
+        '${forceFullChecklists ? 'FORCED full' : 'Incremental'} checklist sync: '
+        '${staleAssetIds.length} of ${freshChecklistTimestamps.length} assets to fetch');
 
     onProgress?.call(SyncPhase.checklists, 0, staleAssetIds.length);
     await _runPooled(
@@ -92,6 +99,10 @@ class SyncRepository {
         onProgress?.call(SyncPhase.checklists, completed, staleAssetIds.length);
       },
     );
+
+    // Debug-only: dump what actually landed in SQLite so the audit report
+    // shows API-returned vs parser-saved vs DB-stored side by side.
+    await auditDbState(_db);
   }
 
   /// Whether an asset's checklist needs resyncing.
@@ -171,6 +182,7 @@ class SyncRepository {
     try {
       debugPrint('── SYNC BUILDINGS ──');
       final data = await _api.authenticatedGetRaw('app_fetchbuildings');
+      await auditApiResponse('app_fetchbuildings', data);
       final buildings = parseBuildingsResponse(data);
       debugPrint('Syncing ${buildings.length} buildings to SQLite');
       final now = DateTime.now();
@@ -202,6 +214,7 @@ class SyncRepository {
         'app_fetch_all_assets',
         queryParams: {'block_id': buildingId},
       );
+      await auditApiResponse('app_fetch_all_assets', data, label: buildingId);
       final assets = parseAssetsResponse(data);
       debugPrint('Syncing ${assets.length} assets to SQLite');
       final now = DateTime.now();
@@ -257,6 +270,7 @@ class SyncRepository {
         'app_fetch_checklist_single',
         queryParams: {'asset_id': assetId},
       );
+      await auditApiResponse('app_fetch_checklist_single', data, label: assetId);
       final chapters = parseChecklistResponse(data);
       debugPrint('Syncing ${chapters.length} chapters to SQLite');
       final now = DateTime.now();

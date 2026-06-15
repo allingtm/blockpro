@@ -1,18 +1,26 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/daos/assets_dao.dart';
 import '../database/daos/drafts_dao.dart';
 import '../database/database.dart';
+import '../models/new_remedial.dart';
+import '../models/outbox_entry.dart';
 import '../models/question.dart';
-import '../repositories/api_repository.dart';
+import '../services/outbox_drainer.dart';
+import '../utils/completion_photo_store.dart';
 import '../utils/draft_photo_store.dart';
 import '../utils/frequency.dart';
+import '../utils/outbox_store.dart';
+import 'auth_provider.dart';
+import 'connectivity_provider.dart';
 import 'database_provider.dart';
+import 'outbox_drain_provider.dart';
+import 'outbox_provider.dart';
 
 /// State for a single question's answer during an in-progress inspection.
 class QuestionAnswer {
@@ -21,25 +29,44 @@ class QuestionAnswer {
   final String? selectedAnswer;
   final List<File> photos;
 
+  /// Remedial the inspector is raising against this question (at most one).
+  /// Only meaningful while the answer is negative; cleared otherwise.
+  final NewRemedial? remedial;
+
   QuestionAnswer({
     required this.question,
     this.chapterName,
     this.selectedAnswer,
     this.photos = const [],
+    this.remedial,
   });
 
   QuestionAnswer copyWith({
     String? selectedAnswer,
     bool clearAnswer = false,
     List<File>? photos,
+    NewRemedial? remedial,
+    bool clearRemedial = false,
   }) {
     return QuestionAnswer(
       question: question,
       chapterName: chapterName,
       selectedAnswer: clearAnswer ? null : (selectedAnswer ?? this.selectedAnswer),
       photos: photos ?? this.photos,
+      remedial: clearRemedial ? null : (remedial ?? this.remedial),
     );
   }
+
+  /// Whether the currently selected answer is a negative one (No /
+  /// Unsatisfactory) — drives the inline "Add a remedial" section.
+  bool get isNegative =>
+      selectedAnswer != null &&
+      (question.answerOption?.negativeLabels.contains(selectedAnswer) ??
+          false);
+
+  /// The remedial to persist/submit — null when none or title is blank.
+  NewRemedial? get effectiveRemedial =>
+      (remedial == null || remedial!.isBlank) ? null : remedial;
 
   /// Whether a photo is currently required based on the question's rules
   /// and the currently selected answer.
@@ -74,12 +101,18 @@ class InspectionState {
   final String? submitError;
   final bool isComplete;
 
+  /// When [isComplete], whether the completion was queued offline (true) rather
+  /// than sent right away (false). Drives the "saved — will submit when online"
+  /// vs "submitted successfully" messaging.
+  final bool isQueued;
+
   InspectionState({
     required this.assetId,
     this.answers = const [],
     this.isSubmitting = false,
     this.submitError,
     this.isComplete = false,
+    this.isQueued = false,
   });
 
   InspectionState copyWith({
@@ -87,6 +120,7 @@ class InspectionState {
     bool? isSubmitting,
     String? submitError,
     bool? isComplete,
+    bool? isQueued,
   }) {
     return InspectionState(
       assetId: assetId,
@@ -94,16 +128,22 @@ class InspectionState {
       isSubmitting: isSubmitting ?? this.isSubmitting,
       submitError: submitError,
       isComplete: isComplete ?? this.isComplete,
+      isQueued: isQueued ?? this.isQueued,
     );
   }
 }
 
 class InspectionNotifier extends StateNotifier<InspectionState> {
   InspectionNotifier(
-    this._apiRepository,
     this._draftsDao,
     this._assetsDao,
     this._photoStore,
+    this._completionPhotoStore,
+    this._outboxStore,
+    this._drainer,
+    this._onOutboxChanged,
+    this._uid,
+    this._isOffline,
     String assetId,
     this._frequency,
     List<QuestionAnswer> answers,
@@ -111,19 +151,32 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
             .map((a) => (
                   answer: a.selectedAnswer,
                   photoCount: a.photos.length,
+                  remedialJson: _encodeRemedial(a),
                 ))
             .toList(growable: false),
         super(InspectionState(assetId: assetId, answers: answers));
 
-  final ApiRepository _apiRepository;
+  /// Canonical encoding of an answer's effective remedial for change
+  /// detection — null when none (or blank-titled, which never persists).
+  static String? _encodeRemedial(QuestionAnswer a) {
+    final r = a.effectiveRemedial;
+    return r == null ? null : jsonEncode(r.toJson());
+  }
+
   final DraftsDao _draftsDao;
   final AssetsDao _assetsDao;
   final DraftPhotoStore _photoStore;
+  final CompletionPhotoStore _completionPhotoStore;
+  final OutboxStore _outboxStore;
+  final OutboxDrainer _drainer;
+  final void Function() _onOutboxChanged;
+  final String? _uid;
+  final bool Function() _isOffline;
   final String? _frequency;
 
-  /// Snapshot of the answers/photos as first loaded (including any restored
-  /// draft), used to detect whether the user has made unsaved changes.
-  final List<({String? answer, int photoCount})> _initial;
+  /// Snapshot of the answers/photos/remedials as first loaded (including any
+  /// restored draft), used to detect whether the user has made unsaved changes.
+  final List<({String? answer, int photoCount, String? remedialJson})> _initial;
 
   /// Whether the current answers differ from what was first loaded.
   /// Drives the "save draft?" prompt when leaving the screen.
@@ -133,6 +186,7 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
     for (var i = 0; i < current.length; i++) {
       if (current[i].selectedAnswer != _initial[i].answer) return true;
       if (current[i].photos.length != _initial[i].photoCount) return true;
+      if (_encodeRemedial(current[i]) != _initial[i].remedialJson) return true;
     }
     return false;
   }
@@ -148,12 +202,25 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
     if (wasPhotoRequired && !isNowPhotoRequired) {
       updated[index] = updated[index].copyWith(photos: []);
     }
+    // Discard any in-progress remedial when the answer is no longer negative
+    // (same policy as photo-clearing above).
+    if (!updated[index].isNegative) {
+      updated[index] = updated[index].copyWith(clearRemedial: true);
+    }
     state = state.copyWith(answers: updated);
   }
 
   void clearAnswer(int index) {
     final updated = List<QuestionAnswer>.from(state.answers);
-    updated[index] = updated[index].copyWith(clearAnswer: true, photos: []);
+    updated[index] = updated[index]
+        .copyWith(clearAnswer: true, photos: [], clearRemedial: true);
+    state = state.copyWith(answers: updated);
+  }
+
+  /// Replace the remedial being raised against the question at [index].
+  void updateRemedial(int index, NewRemedial remedial) {
+    final updated = List<QuestionAnswer>.from(state.answers);
+    updated[index] = updated[index].copyWith(remedial: remedial);
     state = state.copyWith(answers: updated);
   }
 
@@ -193,13 +260,22 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
         questionId: answer.question.id,
         answerText: Value(answer.selectedAnswer),
         photoPaths: Value(paths.isEmpty ? null : paths.join('\n')),
+        remedialJson: Value(_encodeRemedial(answer)),
       ));
     }
     await _draftsDao.saveDraft(state.assetId, rows);
   }
 
+  /// Complete the inspection.
+  ///
+  /// Enqueue-first: the full completion (answers + durable photos) is captured
+  /// into the offline outbox BEFORE any network call, the asset is optimistically
+  /// marked completed, the in-progress draft is dropped, and the drainer is fired
+  /// (not awaited). Online, the drain sends it within ~instant; offline, it stays
+  /// queued and is sent automatically when connectivity returns. Either way the
+  /// user's work is durable the moment they tap Complete.
   Future<void> submit() async {
-    // Validate all answers
+    // Validate all answers.
     final invalidIndex = state.answers.indexWhere((a) => !a.isValid);
     if (invalidIndex != -1) {
       final answer = state.answers[invalidIndex];
@@ -211,79 +287,97 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
       return;
     }
 
+    // Don't race an in-flight drain of a prior queued completion for this asset.
+    final existing = await _outboxStore.readAll();
+    final forAsset =
+        existing.where((e) => e.assetId == state.assetId).toList();
+    if (forAsset.any((e) => e.status == OutboxStatus.sending)) {
+      state = state.copyWith(
+        submitError:
+            'This inspection is being submitted. Please wait a moment.',
+      );
+      return;
+    }
+
     state = state.copyWith(isSubmitting: true, submitError: null);
 
     try {
-      // Upload photos first
-      final uploadedPhotoIds = <String>[];
+      final submissionId = generateSubmissionId();
+
+      // Persist every photo to durable, submission-scoped storage so the queued
+      // completion survives an app restart / temp-cache purge.
+      final photos = <OutboxPhoto>[];
+      var photoIndex = 0;
       for (final answer in state.answers) {
         for (final photo in answer.photos) {
-          debugPrint('── UPLOAD IMAGE REQUEST ──');
-          final bytes = await photo.readAsBytes();
-          final base64Image = base64Encode(bytes);
-
-          try {
-            final result = await _apiRepository.authenticatedPost(
-              'app_upload-image_Adam',
-              body: {
-                'base64': base64Image,
-                'asset_id': state.assetId,
-              },
-            );
-            debugPrint('── UPLOAD IMAGE RESPONSE ──');
-            debugPrint('Result: $result');
-            final imageId = result['response']?['image_id'] as String?;
-            if (imageId != null) uploadedPhotoIds.add(imageId);
-          } catch (e) {
-            debugPrint('── UPLOAD IMAGE ERROR ──');
-            debugPrint('Error: $e');
-            // Continue with submission even if photo upload fails
-          }
+          final durablePath = await _completionPhotoStore.persistPhoto(
+            photo,
+            submissionId,
+            index: photoIndex,
+          );
+          photos.add(OutboxPhoto(
+            localPath: durablePath,
+            questionId: answer.question.id,
+          ));
+          photoIndex++;
         }
       }
 
-      // Submit completed inspection
-      debugPrint('── COMPLETED INSPECTION REQUEST ──');
-      // Bubble's app_completed-inspection reads each item's `answer` and
-      // `question` sub-fields (Step 3 passes them to app_create-completed-question),
-      // so the keys must match exactly.
-      final answersPayload = state.answers.map((a) => {
-        'answer': a.selectedAnswer ?? '',
-        'question': a.question.questionText,
-      }).toList();
+      // Freeze the answer payload exactly as the backend expects (`answer` +
+      // `question` text), tagged with questionId for re-open re-mapping.
+      final answers = state.answers
+          .map((a) => OutboxAnswer(
+                question: a.question.questionText,
+                answer: a.selectedAnswer ?? '',
+                questionId: a.question.id,
+                remedial: a.effectiveRemedial,
+              ))
+          .toList();
 
-      final body = {
-        'asset_id': state.assetId,
-        'answers': answersPayload,
-        if (uploadedPhotoIds.isNotEmpty) 'photo_ids': uploadedPhotoIds,
-      };
-      debugPrint('Body: ${jsonEncode(body)}');
+      final checklistLastModified =
+          await _assetsDao.getChecklistLastModifiedFor(state.assetId);
 
-      final result = await _apiRepository.authenticatedPost(
-        'app_completed-inspection',
-        body: body,
-      );
-      debugPrint('── COMPLETED INSPECTION RESPONSE ──');
-      debugPrint('Result: $result');
-
-      // Inspection submitted — discard any local draft for this asset.
-      await _draftsDao.deleteDraft(state.assetId);
-      await _photoStore.deleteAssetPhotos(state.assetId);
-
-      // Optimistically mark the asset completed locally so its card turns
-      // green right away. dueDate is recomputed from the frequency; if it
-      // can't be parsed it's left as-is for the next sync to correct.
       final now = DateTime.now();
+      final entry = OutboxEntry(
+        submissionId: submissionId,
+        uid: _uid,
+        assetId: state.assetId,
+        frequency: _frequency,
+        checklistLastModified: checklistLastModified?.toIso8601String(),
+        answers: answers,
+        photos: photos,
+        status: OutboxStatus.pending,
+        createdAt: now.millisecondsSinceEpoch,
+      );
+
+      // Supersede any prior (non-sending) queued completion for this asset so
+      // there's at most one — the amended answers fully replace the old ones.
+      for (final old in forAsset) {
+        await _outboxStore.remove(old.submissionId);
+      }
+      await _outboxStore.enqueue(entry);
+      _onOutboxChanged();
+
+      // Optimistic local completion + drop the now-redundant draft (the payload
+      // lives durably in the outbox).
       await _assetsDao.markCompleted(
         state.assetId,
         lastCompleted: now,
         dueDate: nextDueDate(_frequency, from: now),
       );
+      await _draftsDao.deleteDraft(state.assetId);
+      await _photoStore.deleteAssetPhotos(state.assetId);
 
-      state = state.copyWith(isSubmitting: false, isComplete: true);
+      final queued = _isOffline();
+      state = state.copyWith(
+        isSubmitting: false,
+        isComplete: true,
+        isQueued: queued,
+      );
+
+      // Fire-and-forget: online sends immediately; offline leaves it queued.
+      unawaited(_drainer.drain());
     } catch (error) {
-      debugPrint('── COMPLETED INSPECTION ERROR ──');
-      debugPrint('Error: $error');
       state = state.copyWith(
         isSubmitting: false,
         submitError: error.toString(),
@@ -302,12 +396,20 @@ final inspectionNotifierProvider = StateNotifierProvider.autoDispose.family<
     ({String assetId, String? frequency, List<QuestionAnswer> answers})>(
   (ref, params) {
     final db = ref.watch(appDatabaseProvider);
-    final apiRepository = ref.watch(apiRepositoryProvider);
+    final outboxStore = ref.watch(outboxStoreProvider);
+    final completionPhotoStore = ref.watch(completionPhotoStoreProvider);
+    final drainer = ref.watch(outboxDrainerProvider);
+    final authRepo = ref.watch(authRepositoryProvider);
     return InspectionNotifier(
-      apiRepository,
       db.draftsDao,
       db.assetsDao,
       const DraftPhotoStore(),
+      completionPhotoStore,
+      outboxStore,
+      drainer,
+      () => ref.read(outboxEntriesProvider.notifier).refresh(),
+      authRepo.uid,
+      () => ref.read(isOfflineProvider).valueOrNull ?? false,
       params.assetId,
       params.frequency,
       params.answers,

@@ -10,15 +10,12 @@ import 'daos/assets_dao.dart';
 import 'daos/buildings_dao.dart';
 import 'daos/chapters_dao.dart';
 import 'daos/drafts_dao.dart';
-import 'daos/inspections_dao.dart';
 import 'daos/questions_dao.dart';
 import 'tables/assets_table.dart';
 import 'tables/buildings_table.dart';
 import 'tables/chapters_table.dart';
-import 'tables/completed_inspections_table.dart';
 import 'tables/draft_answers_table.dart';
 import 'tables/draft_inspections_table.dart';
-import 'tables/inspection_answers_table.dart';
 import 'tables/questions_table.dart';
 
 part 'database.g.dart';
@@ -29,8 +26,6 @@ part 'database.g.dart';
     AssetsTable,
     ChaptersTable,
     QuestionsTable,
-    CompletedInspectionsTable,
-    InspectionAnswersTable,
     DraftInspectionsTable,
     DraftAnswersTable,
   ],
@@ -39,7 +34,6 @@ part 'database.g.dart';
     AssetsDao,
     ChaptersDao,
     QuestionsDao,
-    InspectionsDao,
     DraftsDao,
   ],
 )
@@ -50,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

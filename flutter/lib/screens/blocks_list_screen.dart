@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/building.dart';
+import '../models/outbox_entry.dart';
 import '../providers/building_badges_provider.dart';
 import '../providers/buildings_provider.dart';
 import '../providers/drafts_provider.dart';
+import '../providers/outbox_provider.dart';
 import '../providers/refresh_sync_provider.dart';
 import '../theme/app_palettes.dart';
 import '../theme/app_theme_tokens.dart';
@@ -13,14 +15,46 @@ import '../widgets/common/widgets.dart';
 
 /// Master view: list of all blocks (buildings) the user has access to.
 /// Tapping a block pushes the detail view (its inspections).
-class BlocksListScreen extends ConsumerWidget {
+class BlocksListScreen extends ConsumerStatefulWidget {
   const BlocksListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BlocksListScreen> createState() => _BlocksListScreenState();
+}
+
+class _BlocksListScreenState extends ConsumerState<BlocksListScreen> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed from the provider so the box and the active query stay in sync when
+    // the user returns to this tab (the screen is kept alive in an IndexedStack).
+    _searchController =
+        TextEditingController(text: ref.read(buildingSearchQueryProvider));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    ref.read(buildingSearchQueryProvider.notifier).state = value;
+    // Refresh the clear-icon visibility.
+    setState(() {});
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    ref.read(buildingSearchQueryProvider.notifier).state = '';
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(buildingsNotifierProvider);
-    final badges = ref.watch(buildingBadgesProvider).valueOrNull ?? const {};
-    final draftBuildings = ref.watch(buildingsWithDraftsProvider);
     final isRefreshing = ref.watch(
       refreshNotifierProvider.select((s) => s.isRunning),
     );
@@ -44,23 +78,95 @@ class BlocksListScreen extends ConsumerWidget {
       );
     }
 
+    final badges = ref.watch(buildingBadgesProvider).valueOrNull ?? const {};
+    final draftBuildings = ref.watch(buildingsWithDraftsProvider);
+    final queuedBuildings = ref.watch(buildingsWithQueuedProvider);
+    final query = ref.watch(buildingSearchQueryProvider).trim();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: AppTextField(
+            controller: _searchController,
+            hint: 'Search buildings…',
+            prefixIcon: Icons.search,
+            textInputAction: TextInputAction.search,
+            onChanged: _onSearchChanged,
+            suffixIcon: _searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: _clearSearch,
+                  ),
+          ),
+        ),
+        Expanded(
+          child: query.isEmpty
+              ? _buildPaginatedList(
+                  state.items, badges, draftBuildings, queuedBuildings)
+              : _buildSearchResults(badges, draftBuildings, queuedBuildings),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaginatedList(
+    List<Building> items,
+    Map<String, BuildingBadge> badges,
+    Set<String> draftBuildings,
+    Set<String> queuedBuildings,
+  ) {
     return RefreshIndicator(
-      onRefresh: () =>
-          ref.read(buildingsNotifierProvider.notifier).refresh(),
+      onRefresh: () => ref.read(buildingsNotifierProvider.notifier).refresh(),
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-        itemCount: state.items.length,
-        itemBuilder: (context, index) {
-          final building = state.items[index];
-          final badge = badges[building.id] ?? const BuildingBadge();
-          return _BlockCard(
-            building: building,
-            badge: badge,
-            hasDraft: draftBuildings.contains(building.id),
-            onTap: () => context.push('/block/${building.id}', extra: building),
-          );
-        },
+        itemCount: items.length,
+        itemBuilder: (context, index) =>
+            _buildCard(items[index], badges, draftBuildings, queuedBuildings),
       ),
+    );
+  }
+
+  Widget _buildSearchResults(
+    Map<String, BuildingBadge> badges,
+    Set<String> draftBuildings,
+    Set<String> queuedBuildings,
+  ) {
+    final results =
+        ref.watch(buildingSearchResultsProvider).valueOrNull ?? const [];
+    if (results.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No buildings match',
+            style: TextStyle(fontSize: 16, color: context.tokens.textFaint),
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      itemCount: results.length,
+      itemBuilder: (context, index) =>
+          _buildCard(results[index], badges, draftBuildings, queuedBuildings),
+    );
+  }
+
+  Widget _buildCard(
+    Building building,
+    Map<String, BuildingBadge> badges,
+    Set<String> draftBuildings,
+    Set<String> queuedBuildings,
+  ) {
+    final badge = badges[building.id] ?? const BuildingBadge();
+    return _BlockCard(
+      building: building,
+      badge: badge,
+      hasDraft: draftBuildings.contains(building.id),
+      hasQueued: queuedBuildings.contains(building.id),
+      onTap: () => context.push('/block/${building.id}', extra: building),
     );
   }
 }
@@ -70,12 +176,14 @@ class _BlockCard extends StatelessWidget {
     required this.building,
     required this.badge,
     required this.hasDraft,
+    required this.hasQueued,
     required this.onTap,
   });
 
   final Building building;
   final BuildingBadge badge;
   final bool hasDraft;
+  final bool hasQueued;
   final VoidCallback onTap;
 
   @override
@@ -102,6 +210,10 @@ class _BlockCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (hasQueued) ...[
+            const OutboxStatusChip(status: OutboxStatus.pending),
+            const SizedBox(width: 8),
+          ],
           if (hasDraft) ...[
             const DraftChip(),
             const SizedBox(width: 8),
