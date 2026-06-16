@@ -40,6 +40,18 @@ class NewRemedial {
           'registeritems': registerItems.map((r) => r.toJson()).toList(),
       };
 
+  /// Serialize for the `app_completed-inspection` submission payload, using the
+  /// snake_case wire keys. Distinct from [toJson], which keeps the API's
+  /// run-together key names for local draft + outbox persistence.
+  Map<String, dynamic> toApiJson() => {
+        'remedial_name': title.trim(),
+        if (location.trim().isNotEmpty) 'remedial_location': location.trim(),
+        if (description.trim().isNotEmpty) 'remedial_desc': description.trim(),
+        'remedial_priority': priority,
+        if (registerItems.isNotEmpty)
+          'register_items': registerItems.map((r) => r.toApiJson()).toList(),
+      };
+
   factory NewRemedial.fromJson(Map<String, dynamic> json) {
     final itemsRaw = json['registeritems'];
     final items = itemsRaw is List

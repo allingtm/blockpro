@@ -541,53 +541,94 @@ Mark an inspection as completed.
 | Content-Type | application/json |
 
 **Request Body (as sent by the app):**
+
+All keys are `snake_case`.
+
 ```json
 {
   "asset_id": "1776160199545x786906369052976900",
+  "completion_date": "2026-06-15T10:30:00.000Z",
   "answers": [
     { "question": "Is the door undamaged?", "answer": "Satisfactory" },
     {
       "question": "Does the closer work?",
       "answer": "Unsatisfactory",
+      "question_id": "1771871963645x392498056957566000",
+      "chapter_id": "1776160199545x786906369052976900_1",
+      "photo_ids": ["1781541587644x497486149803634050", "..."],
       "remedial": {
-        "remedialname": "Replace door closer",
-        "remediallocation": "1st floor landing",
-        "remedialdesc": "Closer leaking oil, door not latching",
-        "remedialpriority": "High",
-        "registeritems": [
+        "remedial_name": "Replace door closer",
+        "remedial_location": "1st floor landing",
+        "remedial_desc": "Closer leaking oil, door not latching",
+        "remedial_priority": "High",
+        "register_items": [
           {
-            "registeritemref": "Wallbox1",
-            "registeritemfloor": "1st",
-            "registeritemlocation": "Landing"
+            "register_item_ref": "Wallbox1",
+            "register_item_floor": "1st",
+            "register_item_location": "Landing"
           }
         ]
       }
     }
   ],
-  "photo_ids": ["<image id>", "..."]
+  "inspection_photo_ids": ["<header image id>", "..."],
+  "register_items": [
+    {
+      "register_item_ref": "Wallbox1",
+      "register_item_floor": "1st",
+      "register_item_location": "Landing"
+    }
+  ]
 }
 ```
 
-- `photo_ids` is only included when photos were uploaded (via `app_upload-image_Adam`).
+- **`completion_date`** — when the inspector tapped Complete, ISO-8601 UTC
+  (trailing `Z`), a sibling of `asset_id`.
+- **Per-answer ids** — `question_id` / `chapter_id` are echoed from the checklist
+  (§5.5). `question_id` is whatever `app_fetch_checklist_single` returned; the app
+  is a pass-through, so an empty value here means the checklist workflow did not
+  populate `questionid`. `chapter_id` is the synthesised `{asset_id}_{chapterorder}`.
+- **`photo_ids`** (optional, per answer) — the per-question photo `image_id`s
+  (from `app_upload-image_Adam`) as a JSON array, omitted when that answer had no
+  photo. A question may carry more than one photo.
+- **`inspection_photo_ids`** — inspection-level (header) photo ids, only included
+  when present (replaces the old flat top-level `photo_ids`).
+- **`register_items`** (top-level, optional) — asset register items the inspector
+  tagged the whole inspection with; omitted when none.
 - **`remedial` (optional, per answer)** — present only on answers where the
   inspector raised a remedial against the question (the app offers this when
   the answer is negative: `No` / `Unsatisfactory`, at most one per question).
-  Field names match the read-side remedial object (§5.5): `remedialname`
-  (always present, non-empty), `remedialpriority` (`Low` | `High`, always
-  present), `remediallocation` / `remedialdesc` (omitted when empty),
-  `registeritems` (omitted when empty — echoes the asset's register-item
-  objects, §5.3, that the remedial relates to). `remedialduedate` is NOT sent —
-  the server assigns it. The Bubble workflow must be extended to create an
-  ExistingRemedial from each `remedial` object and attach it to the matching
-  question; unknown/absent keys must not break older payloads.
+  Keys: `remedial_name` (always present, non-empty), `remedial_priority`
+  (`Low` | `High`, always present), `remedial_location` / `remedial_desc`
+  (omitted when empty), `register_items` (omitted when empty — echoes the asset's
+  register-item objects, §5.3, that the remedial relates to). A `remedial_due_date`
+  is NOT sent — the server assigns it. The Bubble workflow must be extended to
+  create an ExistingRemedial from each `remedial` object and attach it to the
+  matching question; unknown/absent keys must not break older payloads.
 
 **Success Response (200):**
 ```json
 {
-  "status": "string",
-  "response": {}
+  "status": "success",
+  "response": {
+    "nextduedate": "2027-06-15T10:30:00.000Z",
+    "yellowdate": "2027-06-25T10:30:00.000Z"
+  }
 }
 ```
+
+- **`nextduedate`** — the recomputed next due date (`now + frequency`). The app
+  writes this to the asset's `dueDate`.
+- **`yellowdate`** — the amber/warning threshold date (`nextduedate ± r1 days`
+  from the asset option set). The app writes this to the asset's `yellowDate`.
+- **Returned only for yearly assets.** The backend's "Return data from API" step
+  is gated by *Frequency is Year(s)*, so both keys are absent for day/week/month
+  frequencies. When absent, the app falls back to recomputing `dueDate` locally
+  from the `frequency` string and leaves `yellowDate` untouched until the next
+  sync.
+- **Computed from the server's current time**, not the submitted
+  `completion_date` — for a completion queued offline and drained later, the
+  due date is relative to the drain time, not when the inspector tapped Complete.
 
 ---
 

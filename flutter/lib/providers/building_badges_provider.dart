@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../utils/asset_status.dart';
 import 'database_provider.dart';
 
 class BuildingBadge {
@@ -12,27 +13,27 @@ class BuildingBadge {
 
 /// Stream of per-building badge counts derived from the assets table.
 ///
-/// Red    = assets with `dueDate < today`.
-/// Amber  = assets with `dueDate >= today && dueDate <= today + 7 days`.
-/// Buildings with zero assets aren't present in the map — callers should
-/// treat a missing key as an empty [BuildingBadge].
+/// Red and amber follow the same rule as the inspection cards
+/// ([statusForDates]): red = overdue, amber = the server's `yellowDate`
+/// threshold reached but not yet overdue. Buildings with zero assets aren't
+/// present in the map — callers should treat a missing key as an empty
+/// [BuildingBadge].
 final buildingBadgesProvider =
     StreamProvider<Map<String, BuildingBadge>>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return db.assetsDao.watchBuildingDueDates().map((rows) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final sevenDays = today.add(const Duration(days: 7));
     final red = <String, int>{};
     final amber = <String, int>{};
     for (final row in rows) {
-      final due = row.dueDate;
-      if (due == null) continue;
-      final dueDay = DateTime(due.year, due.month, due.day);
-      if (dueDay.isBefore(today)) {
-        red[row.buildingId] = (red[row.buildingId] ?? 0) + 1;
-      } else if (!dueDay.isAfter(sevenDays)) {
-        amber[row.buildingId] = (amber[row.buildingId] ?? 0) + 1;
+      switch (statusForDates(
+          dueDate: row.dueDate, yellowDate: row.yellowDate, now: now)) {
+        case AssetStatus.red:
+          red[row.buildingId] = (red[row.buildingId] ?? 0) + 1;
+        case AssetStatus.amber:
+          amber[row.buildingId] = (amber[row.buildingId] ?? 0) + 1;
+        case AssetStatus.green:
+          break;
       }
     }
     final ids = {...red.keys, ...amber.keys};

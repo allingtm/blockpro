@@ -29,6 +29,15 @@ class DraftsDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// The draft inspection row for [assetId] (carries inspection-level photo
+  /// paths + tagged register items), or null when no draft exists.
+  Future<DraftInspectionsTableData?> getDraftInspection(String assetId) {
+    return (select(draftInspectionsTable)
+          ..where((t) => t.assetId.equals(assetId))
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   Future<bool> hasDraft(String assetId) async {
     final row = await (select(draftInspectionsTable)
           ..where((t) => t.assetId.equals(assetId))
@@ -40,15 +49,22 @@ class DraftsDao extends DatabaseAccessor<AppDatabase>
   // ── Mutations ──────────────────────────────────────────
 
   /// Upsert a draft for [assetId], replacing any previously-saved answers.
+  ///
+  /// [photoPaths] / [registerItemsJson] carry the inspection-level photo
+  /// evidence and tagged register items (null when none).
   Future<void> saveDraft(
     String assetId,
-    List<DraftAnswersTableCompanion> answers,
-  ) async {
+    List<DraftAnswersTableCompanion> answers, {
+    String? photoPaths,
+    String? registerItemsJson,
+  }) async {
     await transaction(() async {
       await into(draftInspectionsTable).insertOnConflictUpdate(
         DraftInspectionsTableCompanion.insert(
           assetId: assetId,
           updatedAt: DateTime.now(),
+          photoPaths: Value(photoPaths),
+          registerItemsJson: Value(registerItemsJson),
         ),
       );
       await (delete(draftAnswersTable)

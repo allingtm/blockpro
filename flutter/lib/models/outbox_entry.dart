@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'new_remedial.dart';
+import 'register_item.dart';
 
 /// Status of a queued offline completion as it moves through the outbox.
 enum OutboxStatus {
@@ -39,9 +40,10 @@ class OutboxPhoto {
   final String localPath;
   final String? uploadedImageId;
 
-  /// The question this photo belongs to. Local-only metadata (the backend takes
-  /// a flat asset-level `photo_ids` list); used to regroup photos per-question
-  /// when a queued completion is re-opened for review.
+  /// The question this photo belongs to. Used both to regroup photos
+  /// per-question when a queued completion is re-opened for review, and to
+  /// resolve each answer's `photoid` at drain time (null = inspection-level
+  /// header photo, which goes in `inspection_photo_ids` instead).
   final String? questionId;
 
   const OutboxPhoto({
@@ -81,36 +83,53 @@ class OutboxAnswer {
   final String question;
   final String answer;
 
-  /// The source question's id. Local-only (the backend reads `question` text);
-  /// used to re-map answers onto the checklist when a queued completion is
-  /// re-opened, robust to question-text changes.
+  /// The source question's id. Used to re-map answers onto the checklist when a
+  /// queued completion is re-opened (robust to question-text changes), and sent
+  /// to the backend as `questionid` on each answer.
   final String? questionId;
+
+  /// The source question's chapter id (`Question.chapterId`), frozen at enqueue.
+  /// Sent to the backend as `chapterid` on each answer.
+  final String? chapterId;
 
   /// Remedial raised against this question, frozen at enqueue (already
   /// filtered to non-blank by `QuestionAnswer.effectiveRemedial`).
   final NewRemedial? remedial;
 
+  /// Whether a remedial was *mandatory* on this answer's negative path (true)
+  /// rather than optional (false), frozen at enqueue from
+  /// `QuestionAnswer.isRemedialRequired` (= negative answer with no prior
+  /// remedials on the question). Only meaningful when [remedial] is present;
+  /// surfaced to the backend as `remedialtype` ("mandatory"/"optional").
+  final bool remedialRequired;
+
   const OutboxAnswer({
     required this.question,
     required this.answer,
     this.questionId,
+    this.chapterId,
     this.remedial,
+    this.remedialRequired = false,
   });
 
   Map<String, dynamic> toJson() => {
         'question': question,
         'answer': answer,
         'questionId': questionId,
+        'chapterId': chapterId,
         if (remedial != null) 'remedial': remedial!.toJson(),
+        'remedialRequired': remedialRequired,
       };
 
   factory OutboxAnswer.fromJson(Map<String, dynamic> json) => OutboxAnswer(
         question: (json['question'] as String?) ?? '',
         answer: (json['answer'] as String?) ?? '',
         questionId: json['questionId'] as String?,
+        chapterId: json['chapterId'] as String?,
         remedial: json['remedial'] is Map<String, dynamic>
             ? NewRemedial.fromJson(json['remedial'] as Map<String, dynamic>)
             : null,
+        remedialRequired: (json['remedialRequired'] as bool?) ?? false,
       );
 }
 
@@ -142,6 +161,12 @@ class OutboxEntry {
 
   final List<OutboxAnswer> answers;
   final List<OutboxPhoto> photos;
+
+  /// Asset register items the inspector tagged the whole inspection with,
+  /// frozen at enqueue. Sent as the top-level `registeritems` field on
+  /// `app_completed-inspection` (distinct from any per-remedial register items).
+  final List<RegisterItem> registerItems;
+
   final OutboxStatus status;
   final int attemptCount;
 
@@ -159,6 +184,7 @@ class OutboxEntry {
     this.checklistLastModified,
     this.answers = const [],
     this.photos = const [],
+    this.registerItems = const [],
     this.status = OutboxStatus.pending,
     this.attemptCount = 0,
     this.lastAttemptAt,
@@ -181,6 +207,7 @@ class OutboxEntry {
       checklistLastModified: checklistLastModified,
       answers: answers,
       photos: photos ?? this.photos,
+      registerItems: registerItems,
       status: status ?? this.status,
       attemptCount: attemptCount ?? this.attemptCount,
       createdAt: createdAt,
@@ -197,6 +224,7 @@ class OutboxEntry {
         'checklistLastModified': checklistLastModified,
         'answers': answers.map((a) => a.toJson()).toList(),
         'photos': photos.map((p) => p.toJson()).toList(),
+        'registerItems': registerItems.map((r) => r.toJson()).toList(),
         'status': status.jsonValue,
         'attemptCount': attemptCount,
         'createdAt': createdAt,
@@ -216,6 +244,10 @@ class OutboxEntry {
           .toList(),
       photos: (json['photos'] as List<dynamic>? ?? const [])
           .map((e) => OutboxPhoto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      registerItems: (json['registerItems'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(RegisterItem.fromJson)
           .toList(),
       status: OutboxStatus.fromJson(json['status'] as String?),
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,

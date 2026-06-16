@@ -39,11 +39,14 @@ Future<void> replayCompletion({
   required OutboxStore outbox,
 }) async {
   // 1) Upload any photos that haven't uploaded yet, memoizing each image_id.
-  final imageIds = <String>[];
+  // Pair each id with its source photo's questionId (null = inspection-level
+  // header photo) — a failed upload is skipped, so positional alignment with
+  // entry.photos cannot be relied on to split header vs per-question later.
+  final uploaded = <({String? questionId, String imageId})>[];
   for (var i = 0; i < entry.photos.length; i++) {
     final photo = entry.photos[i];
     if (photo.isUploaded) {
-      imageIds.add(photo.uploadedImageId!);
+      uploaded.add((questionId: photo.questionId, imageId: photo.uploadedImageId!));
       continue;
     }
 
@@ -62,7 +65,7 @@ Future<void> replayCompletion({
           '${entry.submissionId} photo $i');
       continue;
     }
-    imageIds.add(imageId);
+    uploaded.add((questionId: photo.questionId, imageId: imageId));
     // Persist the id before doing anything else, so an interrupted run resumes
     // without re-uploading this photo.
     final idx = i;
@@ -73,35 +76,101 @@ Future<void> replayCompletion({
     });
   }
 
-  // 2) Submit the completed inspection. Key names must match the backend:
-  // each answer exposes `answer` (and `question`); `photo_ids` only when
-  // present; `remedial` only on answers where the inspector raised one.
-  final body = <String, dynamic>{
-    'asset_id': entry.assetId,
-    'answers': entry.answers
-        .map((a) => {
-              'answer': a.answer,
-              'question': a.question,
-              if (a.remedial != null) 'remedial': a.remedial!.toJson(),
-            })
-        .toList(),
-    if (imageIds.isNotEmpty) 'photo_ids': imageIds,
-  };
-  await api.authenticatedPost('app_completed-inspection', body: body);
+  // 2) Submit the completed inspection.
+  // TEMPORARY: targeting the `/initialize` path so Bubble's "Detect request
+  // data" re-learns the payload schema (each answer now carries `question_id`,
+  // `chapter_id` and a `photo_ids` list; `remedial_type` is no longer sent).
+  // REVERT to 'app_completed-inspection' once Bubble has detected the new
+  // fields — /initialize runs the workflow in detection mode and must not be
+  // the production completion path. Note: Bubble only learns `photo_ids` from a
+  // real submission whose question actually carried a photo. The server's
+  // returned dates (step 3) come from the production endpoint's "Return data
+  // from API" step, so they are only honoured once this is reverted.
+  final response = await api.authenticatedPost(
+      'app_completed-inspection/initialize',
+      body: buildCompletionBody(entry, uploaded));
 
   // 3) Success — same cleanup the live submit performed. Use the enqueue time
-  // (createdAt) as the completion timestamp so the optimistic due-date matches
-  // when the inspection was actually done; the next sync supplies the
-  // authoritative value.
+  // (createdAt) as the completion timestamp so the optimistic last-completed
+  // matches when the inspection was actually done.
   final completedAt = DateTime.fromMillisecondsSinceEpoch(entry.createdAt);
+  // Prefer the server's authoritative due/yellow dates from the response. The
+  // backend only returns them for yearly-frequency assets ("Only when Frequency
+  // is Year(s)"), so fall back to the locally-recomputed due date otherwise.
+  final serverDates = response['response'];
+  final serverDue = serverDates is Map
+      ? _parseResponseDate(serverDates['nextduedate'])
+      : null;
+  final serverYellow = serverDates is Map
+      ? _parseResponseDate(serverDates['yellowdate'])
+      : null;
   await draftsDao.deleteDraft(entry.assetId);
   await draftPhotoStore.deleteAssetPhotos(entry.assetId);
   await assetsDao.markCompleted(
     entry.assetId,
     lastCompleted: completedAt,
-    dueDate: nextDueDate(entry.frequency, from: completedAt),
+    dueDate: serverDue ?? nextDueDate(entry.frequency, from: completedAt),
+    yellowDate: serverYellow,
   );
   await outbox.remove(entry.submissionId);
+}
+
+/// Parse a date returned by the `app_completed-inspection` response. Bubble
+/// serialises a `date` field as an ISO-8601 string; tolerate an epoch-millis
+/// number too. Returns null for anything else (caller then falls back to the
+/// locally-recomputed value).
+DateTime? _parseResponseDate(dynamic value) {
+  if (value is String) return DateTime.tryParse(value);
+  if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  return null;
+}
+
+/// Builds the `app_completed-inspection` request body for [entry] given the
+/// already-[uploaded] photos, each paired with its source questionId (null for
+/// an inspection-level header photo). Pure (no IO) so the exact payload shape
+/// can be unit-tested.
+///
+/// Key names must match the backend (snake_case): the top level carries
+/// `asset_id` and `completion_date` (when the inspector tapped Complete, ISO-8601
+/// UTC). Each answer exposes `answer` and `question`, plus its own `question_id`,
+/// `chapter_id` and `photo_ids` (the per-question photo image ids, omitted when
+/// none). `remedial` is included only on answers where the inspector raised one.
+/// Header photos go in the top-level `inspection_photo_ids` and tagged items in
+/// `register_items`; each top-level list is included only when present.
+Map<String, dynamic> buildCompletionBody(
+    OutboxEntry entry,
+    List<({String? questionId, String imageId})> uploaded) {
+  final headerIds =
+      uploaded.where((u) => u.questionId == null).map((u) => u.imageId).toList();
+  // A question can carry multiple photos, so group every uploaded id under its
+  // questionId; each answer surfaces its own photos as the `photo_ids` list.
+  final photoIdsByQuestion = <String, List<String>>{};
+  for (final u in uploaded) {
+    final qid = u.questionId;
+    if (qid != null) (photoIdsByQuestion[qid] ??= []).add(u.imageId);
+  }
+
+  return <String, dynamic>{
+    'asset_id': entry.assetId,
+    'completion_date': DateTime.fromMillisecondsSinceEpoch(entry.createdAt)
+        .toUtc()
+        .toIso8601String(),
+    'answers': entry.answers
+        .map((a) => {
+              'answer': a.answer,
+              'question': a.question,
+              if (a.questionId != null) 'question_id': a.questionId,
+              if (a.chapterId != null) 'chapter_id': a.chapterId,
+              if (photoIdsByQuestion.containsKey(a.questionId))
+                'photo_ids': photoIdsByQuestion[a.questionId],
+              if (a.remedial != null) 'remedial': a.remedial!.toApiJson(),
+            })
+        .toList(),
+    if (headerIds.isNotEmpty) 'inspection_photo_ids': headerIds,
+    if (entry.registerItems.isNotEmpty)
+      'register_items':
+          entry.registerItems.map((r) => r.toApiJson()).toList(),
+  };
 }
 
 /// Drains the offline outbox: walks queued completions FIFO and replays each.

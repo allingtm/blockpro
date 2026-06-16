@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/new_remedial.dart';
+import '../models/register_item.dart';
 import 'database_provider.dart';
 
 /// A single restored draft answer for a question.
@@ -30,24 +31,66 @@ class DraftAnswer {
   }
 }
 
-/// Loads the saved draft for an asset as a `questionId -> DraftAnswer` map.
+/// A restored draft inspection: per-question answers plus the inspection-level
+/// photo evidence and tagged register items.
+class DraftInspection {
+  final Map<String, DraftAnswer> answers;
+  final List<String> photoPaths;
+  final List<RegisterItem> registerItems;
+
+  const DraftInspection({
+    this.answers = const {},
+    this.photoPaths = const [],
+    this.registerItems = const [],
+  });
+
+  /// True when no draft exists (no answers, photos, or tagged items).
+  bool get isEmpty =>
+      answers.isEmpty && photoPaths.isEmpty && registerItems.isEmpty;
+
+  /// Decode the draft inspection row's `registerItemsJson` column.
+  static List<RegisterItem> decodeRegisterItems(String? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(RegisterItem.fromJson)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static List<String> _splitPaths(String? raw) =>
+      (raw == null || raw.isEmpty) ? const [] : raw.split('\n');
+}
+
+/// Loads the saved draft for an asset (answers + inspection-level photos and
+/// register items).
 ///
-/// Returns an empty map when no draft exists. The inspection screen uses this
-/// to pre-fill answers and rebuild photos when reopening an asset.
+/// Returns an empty [DraftInspection] when no draft exists. The inspection
+/// screen uses this to pre-fill answers, photos, and register-item tags when
+/// reopening an asset.
 final draftAnswersProvider = FutureProvider.autoDispose
-    .family<Map<String, DraftAnswer>, String>((ref, assetId) async {
+    .family<DraftInspection, String>((ref, assetId) async {
   final draftsDao = ref.watch(appDatabaseProvider).draftsDao;
   final rows = await draftsDao.getDraftAnswers(assetId);
-  return {
-    for (final row in rows)
-      row.questionId: DraftAnswer(
-        answerText: row.answerText,
-        photoPaths: (row.photoPaths == null || row.photoPaths!.isEmpty)
-            ? const []
-            : row.photoPaths!.split('\n'),
-        remedial: DraftAnswer.decodeRemedial(row.remedialJson),
-      ),
-  };
+  final inspection = await draftsDao.getDraftInspection(assetId);
+  return DraftInspection(
+    answers: {
+      for (final row in rows)
+        row.questionId: DraftAnswer(
+          answerText: row.answerText,
+          photoPaths: DraftInspection._splitPaths(row.photoPaths),
+          remedial: DraftAnswer.decodeRemedial(row.remedialJson),
+        ),
+    },
+    photoPaths: DraftInspection._splitPaths(inspection?.photoPaths),
+    registerItems:
+        DraftInspection.decodeRegisterItems(inspection?.registerItemsJson),
+  );
 });
 
 /// Set of asset IDs that currently have a saved draft — drives the Draft badge.

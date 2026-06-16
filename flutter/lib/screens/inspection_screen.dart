@@ -81,6 +81,7 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
           final queuedAnswers = <String, String>{};
           final queuedPhotos = <String, List<String>>{};
           final queuedRemedials = <String, NewRemedial>{};
+          final queuedInspectionPhotos = <String>[];
           if (queued != null) {
             for (final a in queued.answers) {
               if (a.questionId != null) {
@@ -93,6 +94,9 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
             for (final ph in queued.photos) {
               if (ph.questionId != null) {
                 (queuedPhotos[ph.questionId!] ??= []).add(ph.localPath);
+              } else {
+                // Null questionId == inspection-level (header) photo evidence.
+                queuedInspectionPhotos.add(ph.localPath);
               }
             }
           }
@@ -111,7 +115,7 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
                     .toList();
                 remedial = queuedRemedials[q.id];
               } else {
-                final saved = draft?[q.id];
+                final saved = draft?.answers[q.id];
                 selected = (saved?.answerText?.isEmpty ?? true)
                     ? null
                     : saved!.answerText;
@@ -129,10 +133,24 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
               ));
             }
           }
-          final restored = queued == null && (draft?.isNotEmpty ?? false);
+
+          // Inspection-level (header) photo evidence + tagged register items —
+          // from the queued completion if present, else the saved draft.
+          final inspectionPhotos = queued != null
+              ? queuedInspectionPhotos.map((p) => File(p)).toList()
+              : (draft?.photoPaths ?? const [])
+                  .map((p) => File(p))
+                  .toList();
+          final selectedRegisterItems = queued != null
+              ? queued.registerItems
+              : (draft?.registerItems ?? const <RegisterItem>[]);
+
+          final restored = queued == null && !(draft?.isEmpty ?? true);
           return _InspectionForm(
             asset: widget.asset,
             answers: answers,
+            inspectionPhotos: inspectionPhotos,
+            selectedRegisterItems: selectedRegisterItems,
             imagePicker: _imagePicker,
             draftRestored: restored,
             queuedStatus: queued?.status,
@@ -178,6 +196,15 @@ class _ErrorBody extends StatelessWidget {
 class _InspectionForm extends ConsumerStatefulWidget {
   final Asset asset;
   final List<QuestionAnswer> answers;
+
+  /// Inspection-level (header) photo evidence restored from a draft / queued
+  /// completion.
+  final List<File> inspectionPhotos;
+
+  /// Register items the inspection is tagged with, restored from a draft /
+  /// queued completion.
+  final List<RegisterItem> selectedRegisterItems;
+
   final ImagePicker imagePicker;
   final bool draftRestored;
 
@@ -188,6 +215,8 @@ class _InspectionForm extends ConsumerStatefulWidget {
   const _InspectionForm({
     required this.asset,
     required this.answers,
+    required this.inspectionPhotos,
+    required this.selectedRegisterItems,
     required this.imagePicker,
     this.draftRestored = false,
     this.queuedStatus,
@@ -219,6 +248,8 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
     String assetId,
     String? frequency,
     List<QuestionAnswer> answers,
+    List<File> inspectionPhotos,
+    List<RegisterItem> registerItems,
   }) _params;
 
   @override
@@ -228,6 +259,8 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
       assetId: widget.asset.id,
       frequency: widget.asset.frequency,
       answers: widget.answers,
+      inspectionPhotos: widget.inspectionPhotos,
+      registerItems: widget.selectedRegisterItems,
     );
     if (widget.draftRestored) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -284,13 +317,22 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
             itemCount: inspectionState.answers.length + 1,
             itemBuilder: (context, index) {
               if (index == 0) {
-                return _HeaderCard(asset: widget.asset);
+                return _HeaderCard(
+                  asset: widget.asset,
+                  photos: inspectionState.inspectionPhotos,
+                  registerItems: _registerItems,
+                  selectedItems: inspectionState.selectedRegisterItems,
+                  disabled: inspectionState.isSubmitting,
+                  onAddPhoto: () => _pickInspectionPhoto(notifier),
+                  onRemovePhoto: (i) => notifier.removeInspectionPhoto(i),
+                  onToggleItem: (item) => notifier.toggleRegisterItem(item),
+                );
               }
               final qIndex = index - 1;
               final answer = inspectionState.answers[qIndex];
-              final answered = _isAnswered(answer);
+              final complete = _isComplete(answer);
               final expanded =
-                  !answered || _explicitlyExpanded.contains(qIndex);
+                  !complete || _explicitlyExpanded.contains(qIndex);
               return _QuestionCard(
                 index: qIndex,
                 answer: answer,
@@ -301,14 +343,18 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
                     setState(() => _explicitlyExpanded.add(qIndex)),
                 onChange: (value) {
                   notifier.updateAnswer(qIndex, value);
-                  // A negative answer needs follow-up input (remedial form,
-                  // required photo) — keep the card in edit mode instead of
-                  // letting it auto-collapse; the Save button collapses it.
+                  // Keep the card in edit mode (instead of auto-collapsing)
+                  // while the new answer still needs follow-up input: a negative
+                  // answer (remedial form) or a required photo not yet added.
+                  // The Save button collapses it.
+                  final q = answer.question;
                   final negative = value != null &&
-                      (answer.question.answerOption?.negativeLabels
-                              .contains(value) ??
-                          false);
-                  if (negative) {
+                      (q.answerOption?.negativeLabels.contains(value) ?? false);
+                  final photoStillNeeded = (q.photoRequirement
+                              ?.isPhotoRequired(q.answerOption, value) ??
+                          false) &&
+                      answer.photos.isEmpty;
+                  if (negative || photoStillNeeded) {
                     setState(() => _explicitlyExpanded.add(qIndex));
                   }
                 },
@@ -337,6 +383,17 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
     return (a.selectedAnswer ?? '').trim().isNotEmpty;
   }
 
+  /// Whether a card is fully done (answer + any required photo + any required
+  /// remedial) and so may auto-collapse. Mirrors `_QuestionCard._canSave`, so a
+  /// card answered but still missing a required photo/remedial stays expanded
+  /// (on live selection and on a restored draft) until the user can Save it.
+  static bool _isComplete(QuestionAnswer a) {
+    if (!_isAnswered(a)) return false;
+    if (a.isPhotoRequired && a.photos.isEmpty) return false;
+    if (a.isRemedialRequired && a.effectiveRemedial == null) return false;
+    return true;
+  }
+
   Future<void> _handleComplete(
       InspectionState state, InspectionNotifier notifier) async {
     final allValid = state.answers.every((a) => a.isValid);
@@ -350,9 +407,9 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
       builder: (ctx) => AlertDialog(
         title: const Text('Inspection not complete'),
         content: const Text(
-          'Some questions are unanswered or missing required photos. '
-          'Your answers and photos will be saved as a draft on this device '
-          'so you can finish later.',
+          'Some questions are unanswered, missing a required photo, or '
+          'missing a required remedial. Your answers and photos will be saved '
+          'as a draft on this device so you can finish later.',
         ),
         actions: [
           TextButton(
@@ -446,6 +503,27 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
     notifier.addPhoto(questionIndex, file);
   }
 
+  /// Capture an inspection-level (header) photo. Same dev dummy-photo / device
+  /// `image_picker` flow as [_pickPhoto], but attached to the inspection rather
+  /// than a single question.
+  Future<void> _pickInspectionPhoto(InspectionNotifier notifier) async {
+    // TEMPORARY: dev machines have no camera — generate a placeholder instead
+    // of opening the picker. Restore the image_picker call below for device
+    // builds.
+    //
+    // final picked = await widget.imagePicker.pickImage(
+    //   source: ImageSource.camera,
+    //   maxWidth: 1920,
+    //   maxHeight: 1920,
+    //   imageQuality: 85,
+    // );
+    // if (picked != null) {
+    //   notifier.addInspectionPhoto(File(picked.path));
+    // }
+    final file = await _generateDummyPhoto();
+    notifier.addInspectionPhoto(file);
+  }
+
   /// Renders a flat-colour placeholder with a timestamp and writes it to a
   /// temp file, so the photo flow can be exercised without camera hardware.
   Future<File> _generateDummyPhoto() async {
@@ -480,9 +558,35 @@ class _InspectionFormState extends ConsumerState<_InspectionForm> {
 }
 
 class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({required this.asset});
+  const _HeaderCard({
+    required this.asset,
+    required this.photos,
+    required this.registerItems,
+    required this.selectedItems,
+    required this.disabled,
+    required this.onAddPhoto,
+    required this.onRemovePhoto,
+    required this.onToggleItem,
+  });
 
   final Asset asset;
+
+  /// Inspection-level photo evidence.
+  final List<File> photos;
+
+  /// The asset's register items, offered as inspection-level tags.
+  final List<RegisterItem> registerItems;
+
+  /// Currently-selected register items.
+  final List<RegisterItem> selectedItems;
+
+  final bool disabled;
+  final VoidCallback onAddPhoto;
+  final ValueChanged<int> onRemovePhoto;
+  final ValueChanged<RegisterItem> onToggleItem;
+
+  bool _isSelected(RegisterItem item) =>
+      selectedItems.any((s) => s.ref == item.ref);
 
   @override
   Widget build(BuildContext context) {
@@ -535,12 +639,38 @@ class _HeaderCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              _PhotoPlaceholder(onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Photo evidence coming soon')),
-                );
-              }),
+              _PhotoGallery(
+                photos: photos,
+                disabled: disabled,
+                onAdd: onAddPhoto,
+                onRemove: onRemovePhoto,
+                prominentWhenEmpty: true,
+              ),
+              if (registerItems.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Asset register items (optional)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: tokens.textStrong,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final item in registerItems)
+                      FilterChip(
+                        label: Text(item.displayLabel),
+                        selected: _isSelected(item),
+                        onSelected:
+                            disabled ? null : (_) => onToggleItem(item),
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -551,7 +681,7 @@ class _HeaderCard extends StatelessWidget {
 
 class _PhotoPlaceholder extends StatelessWidget {
   const _PhotoPlaceholder({required this.onTap});
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -649,6 +779,18 @@ class _QuestionCard extends StatelessWidget {
     return (answer.selectedAnswer ?? '').trim().isNotEmpty;
   }
 
+  /// Whether the card may be saved (collapsed). An answer is required; when a
+  /// photo is required at least one must be attached; and on the negative path a
+  /// mandatory remedial (no prior remedials) must be raised.
+  bool get _canSave {
+    if (!_answered) return false;
+    if (answer.isPhotoRequired && answer.photos.isEmpty) return false;
+    if (answer.isRemedialRequired && answer.effectiveRemedial == null) {
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final stripe = expanded
@@ -743,10 +885,6 @@ class _QuestionCard extends StatelessWidget {
             ),
           ),
         ],
-        if (answer.question.existingRemedials.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _RemedialsSection(remedials: answer.question.existingRemedials),
-        ],
         const SizedBox(height: 14),
         if (answer.question.answerOption != null)
           _OptionsField(
@@ -770,6 +908,10 @@ class _QuestionCard extends StatelessWidget {
             onRemove: onRemovePhoto,
           ),
         ],
+        if (answer.question.existingRemedials.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _RemedialsSection(remedials: answer.question.existingRemedials),
+        ],
         // Auto-expands when the answer turns negative; unmounts (and the
         // notifier clears the state) when it turns positive again.
         if (answer.isNegative) ...[
@@ -779,6 +921,7 @@ class _QuestionCard extends StatelessWidget {
             // text controllers reset along with it.
             key: ValueKey(answer.question.id),
             value: answer.remedial,
+            required: answer.isRemedialRequired,
             registerItems: registerItems,
             enabled: !disabled,
             onChanged: onRemedialChanged,
@@ -800,7 +943,7 @@ class _QuestionCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            onPressed: disabled || !_answered ? null : onSave,
+            onPressed: disabled || !_canSave ? null : onSave,
             child: const Text('Save'),
           ),
         ),
@@ -816,12 +959,17 @@ class _AddRemedialSection extends StatefulWidget {
   const _AddRemedialSection({
     super.key,
     required this.value,
+    required this.required,
     required this.registerItems,
     required this.enabled,
     required this.onChanged,
   });
 
   final NewRemedial? value;
+
+  /// Whether raising a remedial is mandatory (negative answer with no existing
+  /// remedials). Drives the "(required)" label and the inline error indicator.
+  final bool required;
   final List<RegisterItem> registerItems;
   final bool enabled;
   final ValueChanged<NewRemedial> onChanged;
@@ -885,6 +1033,7 @@ class _AddRemedialSectionState extends State<_AddRemedialSection> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final missingRequired = widget.required && (widget.value?.isBlank ?? true);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
@@ -902,7 +1051,9 @@ class _AddRemedialSectionState extends State<_AddRemedialSection> {
                   size: 16, color: kActionBlue),
               const SizedBox(width: 6),
               Text(
-                'Add a remedial (optional)',
+                widget.required
+                    ? 'Add a remedial (required)'
+                    : 'Add a remedial (optional)',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -912,14 +1063,31 @@ class _AddRemedialSectionState extends State<_AddRemedialSection> {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            'Leave the title blank to skip.',
-            style: TextStyle(
-              fontSize: 12,
-              fontStyle: FontStyle.italic,
-              color: tokens.textFaint,
+          if (missingRequired)
+            Row(
+              children: [
+                Icon(Icons.error_outline,
+                    size: 16, color: Theme.of(context).colorScheme.error),
+                const SizedBox(width: 4),
+                Text(
+                  'Remedial required',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            )
+          else if (!widget.required)
+            Text(
+              'Leave the title blank to skip.',
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: tokens.textFaint,
+              ),
             ),
-          ),
           const SizedBox(height: 10),
           AppTextField(
             controller: _titleController,
@@ -1248,19 +1416,59 @@ class _PhotoSection extends StatelessWidget {
               ],
             ),
           ),
-        if (answer.photos.isNotEmpty) ...[
+        _PhotoGallery(
+          photos: answer.photos,
+          disabled: disabled,
+          onAdd: onAdd,
+          onRemove: onRemove,
+        ),
+      ],
+    );
+  }
+}
+
+/// Reusable photo strip: horizontal thumbnails (each with a delete affordance)
+/// plus an "add" control. Shared by the per-question photo section and the
+/// inspection-level (header) photo evidence.
+class _PhotoGallery extends StatelessWidget {
+  const _PhotoGallery({
+    required this.photos,
+    required this.disabled,
+    required this.onAdd,
+    required this.onRemove,
+    this.prominentWhenEmpty = false,
+  });
+
+  final List<File> photos;
+  final bool disabled;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onRemove;
+
+  /// When true and there are no photos yet, render the large tappable
+  /// "+ Click to add" box (header style) instead of the compact button.
+  final bool prominentWhenEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    if (photos.isEmpty && prominentWhenEmpty) {
+      return _PhotoPlaceholder(onTap: disabled ? null : onAdd);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (photos.isNotEmpty) ...[
           SizedBox(
             height: 80,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: answer.photos.length,
+              itemCount: photos.length,
               itemBuilder: (context, i) => Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Stack(
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: Image.file(answer.photos[i],
+                      child: Image.file(photos[i],
                           width: 80, height: 80, fit: BoxFit.cover),
                     ),
                     Positioned(

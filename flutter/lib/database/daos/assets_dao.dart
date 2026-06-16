@@ -44,17 +44,22 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
         .get();
   }
 
-  /// Stream of all (buildingId, dueDate) pairs. Used to derive per-building
-  /// red/amber badge counts; consumers compute the counts in Dart so the
-  /// "what is overdue right now" logic stays in one place ([assetStatusFor]).
-  Stream<List<({String buildingId, DateTime? dueDate})>>
+  /// Stream of all (buildingId, dueDate, yellowDate) tuples. Used to derive
+  /// per-building red/amber badge counts; consumers compute the counts in Dart
+  /// so the status rule stays in one place ([statusForDates]).
+  Stream<List<({String buildingId, DateTime? dueDate, DateTime? yellowDate})>>
       watchBuildingDueDates() {
     final query = selectOnly(assetsTable)
-      ..addColumns([assetsTable.buildingId, assetsTable.dueDate]);
+      ..addColumns([
+        assetsTable.buildingId,
+        assetsTable.dueDate,
+        assetsTable.yellowDate,
+      ]);
     return query.watch().map((rows) => rows
         .map((r) => (
               buildingId: r.read(assetsTable.buildingId)!,
               dueDate: r.read(assetsTable.dueDate),
+              yellowDate: r.read(assetsTable.yellowDate),
             ))
         .toList());
   }
@@ -115,17 +120,27 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
   // ── Mutations ──────────────────────────────────────────
 
   /// Optimistically mark an asset as just inspected: set [lastCompleted] and,
-  /// when known, the recomputed [dueDate]. Leaves [dueDate] untouched when null
-  /// so the next sync supplies the authoritative date.
+  /// when known, the recomputed [dueDate].
+  ///
+  /// A null [dueDate] leaves that column untouched so the next sync supplies the
+  /// authoritative value (the local recompute can fail to parse the frequency).
+  ///
+  /// [yellowDate] is always written: completion invalidates the previous cycle's
+  /// amber threshold, and the app can't recompute it locally (it depends on the
+  /// server's per-asset offset). Pass the server's value when known, or null to
+  /// clear the stale threshold so the freshly-completed asset shows green until
+  /// the next sync/drain supplies a new one.
   Future<void> markCompleted(
     String assetId, {
     required DateTime lastCompleted,
     DateTime? dueDate,
+    DateTime? yellowDate,
   }) {
     return (update(assetsTable)..where((t) => t.id.equals(assetId))).write(
       AssetsTableCompanion(
         lastCompleted: Value(lastCompleted),
         dueDate: dueDate == null ? const Value.absent() : Value(dueDate),
+        yellowDate: Value(yellowDate),
       ),
     );
   }

@@ -6,19 +6,35 @@ import '../theme/app_palettes.dart';
 /// Date-based status used by the inspection cards and the building badges.
 ///
 /// red    — due date is in the past (overdue)
-/// amber  — due date is today or within the next 7 days
-/// green  — due date is more than 7 days away, or none set
+/// amber  — the server's `yellowDate` warning threshold has been reached
+///          (today is on/after it) but the asset is not yet overdue
+/// green  — otherwise, including when no `yellowDate` is set (amber is a
+///          server-provided concept; without a `yellowDate` there is no amber
+///          phase, the asset stays green until it goes overdue)
 enum AssetStatus { red, amber, green }
 
-AssetStatus assetStatusFor(Asset asset, {DateTime? now}) {
-  final due = asset.dueDate;
-  if (due == null) return AssetStatus.green;
+/// Status from the raw dates, so the card view ([assetStatusFor]) and the
+/// building-badge counts share one rule.
+AssetStatus statusForDates({
+  DateTime? dueDate,
+  DateTime? yellowDate,
+  DateTime? now,
+}) {
   final today = _dateOnly(now ?? DateTime.now());
-  final dueDay = _dateOnly(due);
-  if (dueDay.isBefore(today)) return AssetStatus.red;
-  if (dueDay.difference(today).inDays <= 7) return AssetStatus.amber;
+  if (dueDate != null && _dateOnly(dueDate).isBefore(today)) {
+    return AssetStatus.red;
+  }
+  if (yellowDate != null && !today.isBefore(_dateOnly(yellowDate))) {
+    return AssetStatus.amber;
+  }
   return AssetStatus.green;
 }
+
+AssetStatus assetStatusFor(Asset asset, {DateTime? now}) => statusForDates(
+      dueDate: asset.dueDate,
+      yellowDate: asset.yellowDate,
+      now: now,
+    );
 
 Color colourForStatus(AssetStatus status) {
   return switch (status) {

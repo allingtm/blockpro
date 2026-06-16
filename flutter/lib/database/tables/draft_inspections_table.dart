@@ -13,6 +13,13 @@ class DraftInspectionsTable extends Table {
   TextColumn get assetId => text().references(AssetsTable, #id)();
   DateTimeColumn get updatedAt => dateTime()();
 
+  /// Inspection-level photo evidence — a newline-joined list of durable file
+  /// paths (same convention as `DraftAnswersTable.photoPaths`).
+  TextColumn get photoPaths => text().nullable()();
+
+  /// JSON-encoded list of `RegisterItem`s the inspection is tagged with, or null.
+  TextColumn get registerItemsJson => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {assetId};
 }

@@ -11,6 +11,7 @@ import '../database/database.dart';
 import '../models/new_remedial.dart';
 import '../models/outbox_entry.dart';
 import '../models/question.dart';
+import '../models/register_item.dart';
 import '../services/outbox_drainer.dart';
 import '../utils/completion_photo_store.dart';
 import '../utils/draft_photo_store.dart';
@@ -68,6 +69,12 @@ class QuestionAnswer {
   NewRemedial? get effectiveRemedial =>
       (remedial == null || remedial!.isBlank) ? null : remedial;
 
+  /// On the negative path, a remedial must be raised when the question carries
+  /// no existing remedials from prior inspections. When prior remedials exist,
+  /// raising a new one is optional.
+  bool get isRemedialRequired =>
+      isNegative && question.existingRemedials.isEmpty;
+
   /// Whether a photo is currently required based on the question's rules
   /// and the currently selected answer.
   bool get isPhotoRequired {
@@ -89,6 +96,9 @@ class QuestionAnswer {
     if (question.answerOption != null && selectedAnswer == null) return false;
     // If a photo is required and none are provided, invalid
     if (isPhotoRequired && photos.isEmpty) return false;
+    // If a remedial is required (negative answer, no prior remedials) and none
+    // has been raised, invalid
+    if (isRemedialRequired && effectiveRemedial == null) return false;
     return true;
   }
 }
@@ -97,6 +107,13 @@ class QuestionAnswer {
 class InspectionState {
   final String assetId;
   final List<QuestionAnswer> answers;
+
+  /// Inspection-level photo evidence (not tied to any one question).
+  final List<File> inspectionPhotos;
+
+  /// Asset register items the inspector has tagged the whole inspection with.
+  final List<RegisterItem> selectedRegisterItems;
+
   final bool isSubmitting;
   final String? submitError;
   final bool isComplete;
@@ -109,6 +126,8 @@ class InspectionState {
   InspectionState({
     required this.assetId,
     this.answers = const [],
+    this.inspectionPhotos = const [],
+    this.selectedRegisterItems = const [],
     this.isSubmitting = false,
     this.submitError,
     this.isComplete = false,
@@ -117,6 +136,8 @@ class InspectionState {
 
   InspectionState copyWith({
     List<QuestionAnswer>? answers,
+    List<File>? inspectionPhotos,
+    List<RegisterItem>? selectedRegisterItems,
     bool? isSubmitting,
     String? submitError,
     bool? isComplete,
@@ -125,6 +146,9 @@ class InspectionState {
     return InspectionState(
       assetId: assetId,
       answers: answers ?? this.answers,
+      inspectionPhotos: inspectionPhotos ?? this.inspectionPhotos,
+      selectedRegisterItems:
+          selectedRegisterItems ?? this.selectedRegisterItems,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       submitError: submitError,
       isComplete: isComplete ?? this.isComplete,
@@ -146,15 +170,24 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
     this._isOffline,
     String assetId,
     this._frequency,
-    List<QuestionAnswer> answers,
-  )   : _initial = answers
+    List<QuestionAnswer> answers, {
+    List<File> inspectionPhotos = const [],
+    List<RegisterItem> selectedRegisterItems = const [],
+  })  : _initial = answers
             .map((a) => (
                   answer: a.selectedAnswer,
                   photoCount: a.photos.length,
                   remedialJson: _encodeRemedial(a),
                 ))
             .toList(growable: false),
-        super(InspectionState(assetId: assetId, answers: answers));
+        _initialInspectionPhotoCount = inspectionPhotos.length,
+        _initialRegisterItemsJson = _encodeRegisterItems(selectedRegisterItems),
+        super(InspectionState(
+          assetId: assetId,
+          answers: answers,
+          inspectionPhotos: inspectionPhotos,
+          selectedRegisterItems: selectedRegisterItems,
+        ));
 
   /// Canonical encoding of an answer's effective remedial for change
   /// detection — null when none (or blank-titled, which never persists).
@@ -162,6 +195,11 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
     final r = a.effectiveRemedial;
     return r == null ? null : jsonEncode(r.toJson());
   }
+
+  /// Canonical encoding of the tagged register items, for change detection and
+  /// draft persistence — null when none are selected.
+  static String? _encodeRegisterItems(List<RegisterItem> items) =>
+      items.isEmpty ? null : jsonEncode(items.map((r) => r.toJson()).toList());
 
   final DraftsDao _draftsDao;
   final AssetsDao _assetsDao;
@@ -178,9 +216,20 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
   /// restored draft), used to detect whether the user has made unsaved changes.
   final List<({String? answer, int photoCount, String? remedialJson})> _initial;
 
+  /// Inspection-level snapshot for the same dirty check.
+  final int _initialInspectionPhotoCount;
+  final String? _initialRegisterItemsJson;
+
   /// Whether the current answers differ from what was first loaded.
   /// Drives the "save draft?" prompt when leaving the screen.
   bool get isDirty {
+    if (state.inspectionPhotos.length != _initialInspectionPhotoCount) {
+      return true;
+    }
+    if (_encodeRegisterItems(state.selectedRegisterItems) !=
+        _initialRegisterItemsJson) {
+      return true;
+    }
     final current = state.answers;
     if (current.length != _initial.length) return true;
     for (var i = 0; i < current.length; i++) {
@@ -240,6 +289,32 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
     state = state.copyWith(answers: updated);
   }
 
+  /// Attach an inspection-level (header) photo.
+  void addInspectionPhoto(File photo) {
+    state = state.copyWith(
+      inspectionPhotos: [...state.inspectionPhotos, photo],
+    );
+  }
+
+  void removeInspectionPhoto(int index) {
+    final photos = List<File>.from(state.inspectionPhotos);
+    photos.removeAt(index);
+    state = state.copyWith(inspectionPhotos: photos);
+  }
+
+  /// Toggle whether an asset register item is tagged on the inspection.
+  /// Matched by [RegisterItem.ref] (mirrors the remedial chip behaviour).
+  void toggleRegisterItem(RegisterItem item) {
+    final selected = List<RegisterItem>.from(state.selectedRegisterItems);
+    final i = selected.indexWhere((s) => s.ref == item.ref);
+    if (i >= 0) {
+      selected.removeAt(i);
+    } else {
+      selected.add(item);
+    }
+    state = state.copyWith(selectedRegisterItems: selected);
+  }
+
   /// Persist the current answers + photos as a local draft for this asset.
   ///
   /// Photos are copied to durable storage so their paths survive an app
@@ -263,7 +338,21 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
         remedialJson: Value(_encodeRemedial(answer)),
       ));
     }
-    await _draftsDao.saveDraft(state.assetId, rows);
+
+    // Inspection-level photo evidence: copy to durable storage like the
+    // per-question photos so the paths survive an app restart.
+    final inspectionPaths = <String>[];
+    for (final photo in state.inspectionPhotos) {
+      inspectionPaths.add(await _photoStore.persistPhoto(photo, state.assetId));
+    }
+
+    await _draftsDao.saveDraft(
+      state.assetId,
+      rows,
+      photoPaths:
+          inspectionPaths.isEmpty ? null : inspectionPaths.join('\n'),
+      registerItemsJson: _encodeRegisterItems(state.selectedRegisterItems),
+    );
   }
 
   /// Complete the inspection.
@@ -279,10 +368,15 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
     final invalidIndex = state.answers.indexWhere((a) => !a.isValid);
     if (invalidIndex != -1) {
       final answer = state.answers[invalidIndex];
-      final reason = answer.question.answerOption != null &&
-              answer.selectedAnswer == null
-          ? 'Please answer question ${invalidIndex + 1}'
-          : 'Photo required for question ${invalidIndex + 1}';
+      final String reason;
+      if (answer.question.answerOption != null &&
+          answer.selectedAnswer == null) {
+        reason = 'Please answer question ${invalidIndex + 1}';
+      } else if (answer.isPhotoRequired && answer.photos.isEmpty) {
+        reason = 'Photo required for question ${invalidIndex + 1}';
+      } else {
+        reason = 'Remedial required for question ${invalidIndex + 1}';
+      }
       state = state.copyWith(submitError: reason);
       return;
     }
@@ -322,15 +416,30 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
           photoIndex++;
         }
       }
+      // Inspection-level photos carry a null questionId — they go to the
+      // backend's `inspection_photo_ids`, while per-question photos surface as
+      // each answer's `photoid`; re-open regroups by questionId either way.
+      for (final photo in state.inspectionPhotos) {
+        final durablePath = await _completionPhotoStore.persistPhoto(
+          photo,
+          submissionId,
+          index: photoIndex,
+        );
+        photos.add(OutboxPhoto(localPath: durablePath));
+        photoIndex++;
+      }
 
       // Freeze the answer payload exactly as the backend expects (`answer` +
-      // `question` text), tagged with questionId for re-open re-mapping.
+      // `question` text), tagged with question + chapter ids for the backend's
+      // per-answer `questionid`/`chapterid` and for re-open re-mapping.
       final answers = state.answers
           .map((a) => OutboxAnswer(
                 question: a.question.questionText,
                 answer: a.selectedAnswer ?? '',
                 questionId: a.question.id,
+                chapterId: a.question.chapterId,
                 remedial: a.effectiveRemedial,
+                remedialRequired: a.isRemedialRequired,
               ))
           .toList();
 
@@ -346,6 +455,7 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
         checklistLastModified: checklistLastModified?.toIso8601String(),
         answers: answers,
         photos: photos,
+        registerItems: state.selectedRegisterItems,
         status: OutboxStatus.pending,
         createdAt: now.millisecondsSinceEpoch,
       );
@@ -387,13 +497,21 @@ class InspectionNotifier extends StateNotifier<InspectionState> {
 }
 
 /// Provider for an in-progress inspection.
-/// Create with (assetId, frequency, answers) tuple — callers flatten
+/// Create with (assetId, frequency, answers, ...) tuple — callers flatten
 /// chapters/questions into a list of [QuestionAnswer] so chapter context is
 /// preserved; [frequency] drives the optimistic due-date update on submit.
+/// [inspectionPhotos] / [registerItems] seed the header's photo evidence and
+/// tagged register items when restoring a draft or queued completion.
 final inspectionNotifierProvider = StateNotifierProvider.autoDispose.family<
     InspectionNotifier,
     InspectionState,
-    ({String assetId, String? frequency, List<QuestionAnswer> answers})>(
+    ({
+      String assetId,
+      String? frequency,
+      List<QuestionAnswer> answers,
+      List<File> inspectionPhotos,
+      List<RegisterItem> registerItems,
+    })>(
   (ref, params) {
     final db = ref.watch(appDatabaseProvider);
     final outboxStore = ref.watch(outboxStoreProvider);
@@ -413,6 +531,8 @@ final inspectionNotifierProvider = StateNotifierProvider.autoDispose.family<
       params.assetId,
       params.frequency,
       params.answers,
+      inspectionPhotos: params.inspectionPhotos,
+      selectedRegisterItems: params.registerItems,
     );
   },
 );

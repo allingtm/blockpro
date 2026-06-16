@@ -24,6 +24,15 @@ class RegisterItem {
         if (location != null) 'registeritemlocation': location,
       };
 
+  /// Serialize for the `app_completed-inspection` submission payload, using the
+  /// snake_case wire keys. Distinct from [toJson] (which keeps the asset's
+  /// inbound `assetregisteritems` key names for local persistence + parsing).
+  Map<String, dynamic> toApiJson() => {
+        if (ref != null) 'register_item_ref': ref,
+        if (floor != null) 'register_item_floor': floor,
+        if (location != null) 'register_item_location': location,
+      };
+
   /// Display label, e.g. "Wallbox1 — 1st, Landing".
   String get displayLabel {
     final detail = [floor, location].whereType<String>().join(', ');
