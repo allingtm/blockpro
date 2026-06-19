@@ -85,9 +85,9 @@ class Asset {
       buildingId: json['buildingId'] as String? ?? '',
       taskName: json['taskname'] as String? ?? 'Unnamed',
       nickname: _emptyToNull(json['assetnickname'] as String?),
-      assetRegisterItems: _emptyToNull(json['assetregisteritems'] as String?),
+      assetRegisterItems: _blobToString(json['assetregisteritems']),
       tooltipText: _emptyToNull(json['tooltiptext'] as String?),
-      tooltipUrls: _emptyToNull(json['tooltipurls'] as String?),
+      tooltipUrls: _blobToString(json['tooltipurls']),
       lastCompleted: _parseDate(json['lastcompleted']),
       dueDate: _parseDate(json['duedate']),
       frequency: _emptyToNull(json['frequency'] as String?),
@@ -110,6 +110,31 @@ class Asset {
     if (value == null || value.isEmpty) return null;
     return value;
   }
+
+  /// Normalise a blob field (`assetregisteritems` / `tooltipurls`) that the v2
+  /// API may send either as an already-stringified JSON value or as a real
+  /// List/Map. Returns a JSON string the `*List` getters can decode, or null
+  /// when empty.
+  static String? _blobToString(dynamic value) {
+    if (value is String) return value.isEmpty ? null : value;
+    if (value is List) return value.isEmpty ? null : jsonEncode(value);
+    if (value is Map) return value.isEmpty ? null : jsonEncode(value);
+    return null;
+  }
+
+  /// Whether the asset has placement info (floor and/or location) to surface.
+  /// Drives the Floor / Location lines on the list and detail cards.
+  bool get hasPlacementInfo => floor != null || location != null;
+
+  /// Whether the asset has any schedule info (last completed / frequency /
+  /// next due) to surface.
+  bool get hasScheduleInfo =>
+      lastCompleted != null || frequency != null || dueDate != null;
+
+  /// Whether the asset has any tooltip help to surface (explanatory text
+  /// and/or source links). Drives the info icon's visibility.
+  bool get hasTooltipInfo =>
+      (tooltipText?.isNotEmpty ?? false) || tooltipUrlList.isNotEmpty;
 
   /// Parse the raw v2 `tooltipurls` string into a list of URLs.
   ///

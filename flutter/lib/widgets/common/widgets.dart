@@ -1,6 +1,7 @@
 export 'app_button.dart';
 export 'app_card.dart';
 export 'app_text_field.dart';
+export 'asset_info_dialog.dart';
 export 'blockpro_app_bar.dart';
 export 'blockpro_logo.dart';
 export 'draft_chip.dart';

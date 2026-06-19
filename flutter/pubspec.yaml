@@ -39,6 +39,12 @@ dependencies:
   # Image capture
   image_picker: ^1.1.0
 
+  # QR / barcode scanning (asset QR codes)
+  mobile_scanner: ^7.0.0
+
+  # Open external URLs (asset tooltip source links)
+  url_launcher: ^6.3.0
+
   # App info
   package_info_plus: ^8.0.0
 

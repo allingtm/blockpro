@@ -602,15 +602,30 @@ class _HeaderCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                asset.displayName,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: tokens.textStrong,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      asset.displayName,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: tokens.textStrong,
+                      ),
+                    ),
+                  ),
+                  AssetInfoButton(asset: asset),
+                ],
               ),
               const SizedBox(height: 12),
+              if (asset.floor != null)
+                _MetaLine(label: 'Floor', value: asset.floor!),
+              if (asset.location != null) ...[
+                if (asset.floor != null) const SizedBox(height: 4),
+                _MetaLine(label: 'Location', value: asset.location!),
+              ],
+              if (asset.hasPlacementInfo && asset.hasScheduleInfo)
+                const SizedBox(height: 10),
               if (asset.lastCompleted != null)
                 _MetaLine(
                   label: 'Last completed',

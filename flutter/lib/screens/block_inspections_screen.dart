@@ -207,6 +207,7 @@ class _InspectionCard extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    AssetInfoButton(asset: asset),
                     if (hasDraft) ...[
                       const SizedBox(width: 8),
                       const DraftChip(),
@@ -221,6 +222,14 @@ class _InspectionCard extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 14),
+                if (asset.floor != null)
+                  _MetaLine(label: 'Floor', value: asset.floor!),
+                if (asset.location != null) ...[
+                  if (asset.floor != null) const SizedBox(height: 4),
+                  _MetaLine(label: 'Location', value: asset.location!),
+                ],
+                if (asset.hasPlacementInfo && asset.hasScheduleInfo)
+                  const SizedBox(height: 10),
                 if (asset.lastCompleted != null)
                   _MetaLine(
                     label: 'Last completed',
