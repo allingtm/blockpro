@@ -47,6 +47,15 @@ class BuildingsDao extends DatabaseAccessor<AppDatabase>
     return result.read(count)!;
   }
 
+  /// Returns the stored building with [id], or `null` if it isn't in the DB.
+  /// Used by the QR scanner to resolve a scanned asset's parent building.
+  Future<BuildingsTableData?> getBuildingById(String id) {
+    return (select(buildingsTable)
+          ..where((t) => t.id.equals(id))
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   Future<List<String>> getAllBuildingIds() async {
     final query = selectOnly(buildingsTable)
       ..addColumns([buildingsTable.id]);

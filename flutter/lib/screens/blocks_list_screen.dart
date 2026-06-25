@@ -29,9 +29,10 @@ class _BlocksListScreenState extends ConsumerState<BlocksListScreen> {
   void initState() {
     super.initState();
     // Seed from the provider so the box and the active query stay in sync when
-    // the user returns to this tab (the screen is kept alive in an IndexedStack).
-    _searchController =
-        TextEditingController(text: ref.read(buildingSearchQueryProvider));
+    // the user returns here (the screen stays mounted beneath pushed routes).
+    _searchController = TextEditingController(
+      text: ref.read(buildingSearchQueryProvider),
+    );
   }
 
   @override
@@ -104,7 +105,11 @@ class _BlocksListScreenState extends ConsumerState<BlocksListScreen> {
         Expanded(
           child: query.isEmpty
               ? _buildPaginatedList(
-                  state.items, badges, draftBuildings, queuedBuildings)
+                  state.items,
+                  badges,
+                  draftBuildings,
+                  queuedBuildings,
+                )
               : _buildSearchResults(badges, draftBuildings, queuedBuildings),
         ),
       ],
@@ -196,8 +201,7 @@ class _BlockCard extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(Icons.apartment_rounded,
-              size: 32, color: tokens.brandIcon),
+          Icon(Icons.apartment_rounded, size: 32, color: tokens.brandIcon),
           const SizedBox(width: 16),
           Expanded(
             child: Text(
@@ -214,10 +218,7 @@ class _BlockCard extends StatelessWidget {
             const OutboxStatusChip(status: OutboxStatus.pending),
             const SizedBox(width: 8),
           ],
-          if (hasDraft) ...[
-            const DraftChip(),
-            const SizedBox(width: 8),
-          ],
+          if (hasDraft) ...[const DraftChip(), const SizedBox(width: 8)],
           _BadgeIndicator(badge: badge),
           const SizedBox(width: 6),
           Icon(Icons.chevron_right, color: tokens.textFaint),
@@ -295,8 +296,11 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.apartment_outlined,
-                size: 80, color: context.tokens.textFaint),
+            Icon(
+              Icons.apartment_outlined,
+              size: 80,
+              color: context.tokens.textFaint,
+            ),
             const SizedBox(height: 16),
             const Text(
               'No data loaded',

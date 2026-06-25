@@ -87,6 +87,15 @@ class AssetsDao extends DatabaseAccessor<AppDatabase> with _$AssetsDaoMixin {
     return result.read(count)!;
   }
 
+  /// Returns the stored asset with [id], or `null` if it isn't in the DB.
+  /// Used by the QR scanner to resolve a scanned asset id to a full asset.
+  Future<AssetsTableData?> getAssetById(String id) {
+    return (select(assetsTable)
+          ..where((t) => t.id.equals(id))
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   Future<List<String>> getAllAssetIds() async {
     final query = selectOnly(assetsTable)
       ..addColumns([assetsTable.id]);

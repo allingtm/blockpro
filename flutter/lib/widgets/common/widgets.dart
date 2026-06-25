@@ -9,4 +9,5 @@ export 'loading_dialog.dart';
 export 'offline_indicator.dart';
 export 'outbox_status_chip.dart';
 export 'refresh_progress_dialog.dart';
+export 'scan_fab.dart';
 export 'striped_card.dart';

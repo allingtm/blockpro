@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/database.dart';
 import '../models/asset.dart';
+import '../models/building.dart';
 import '../repositories/sync_repository.dart';
 import 'database_provider.dart';
 import 'sync_provider.dart';
@@ -169,4 +170,25 @@ final assetSearchResultsProvider = StreamProvider.autoDispose
   return db.assetsDao
       .watchAssetsMatching(arg.buildingId, query)
       .map((rows) => rows.map(PaginatedAssetsNotifier._toAsset).toList());
+});
+
+/// Resolves a scanned asset id to its [Asset] and parent [Building] from the
+/// local DB (the QR carries only the asset id). Returns null when the asset is
+/// not stored locally — e.g. added since the last sync, or a foreign code.
+/// Keyed by asset id so the QR scanner can drive it from the scanned value.
+final scannedAssetProvider = FutureProvider.autoDispose
+    .family<({Asset asset, Building building})?, String>((ref, assetId) async {
+  final db = ref.watch(appDatabaseProvider);
+  final assetRow = await db.assetsDao.getAssetById(assetId);
+  if (assetRow == null) return null;
+  final buildingRow = await db.buildingsDao.getBuildingById(assetRow.buildingId);
+  if (buildingRow == null) return null;
+  return (
+    asset: PaginatedAssetsNotifier._toAsset(assetRow),
+    building: Building(
+      id: buildingRow.id,
+      name: buildingRow.name,
+      assetCount: buildingRow.assetCount,
+    ),
+  );
 });

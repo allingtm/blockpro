@@ -70,6 +70,7 @@ class _BlockInspectionsScreenState
         badgeCount: badge.red,
       ),
       body: _buildBody(state),
+      floatingActionButton: const ScanFab(),
     );
   }
 

@@ -5,11 +5,13 @@ import '../../models/asset.dart';
 import '../../models/building.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/initial_sync_provider.dart';
+import '../../screens/about_screen.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/block_inspections_screen.dart';
 import '../../screens/home_screen.dart';
 import '../../screens/initial_sync_screen.dart';
 import '../../screens/inspection_screen.dart';
+import '../../screens/qr_scan_screen.dart';
 import '../../screens/welcome_screen.dart';
 
 /// Notifier that triggers GoRouter refreshes when auth or sync state changes.
@@ -31,9 +33,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final needsSync = syncAsync.valueOrNull ?? true;
       final location = state.matchedLocation;
 
-      debugPrint('── ROUTER REDIRECT ── location=$location '
-          'isAuth=$isAuth needsSync=$needsSync '
-          'syncAsync=$syncAsync');
+      debugPrint(
+        '── ROUTER REDIRECT ── location=$location '
+        'isAuth=$isAuth needsSync=$needsSync '
+        'syncAsync=$syncAsync',
+      );
 
       final isGoingToAuth = location == '/login' || location == '/';
 
@@ -79,10 +83,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         name: 'block',
         pageBuilder: (context, state) {
           final building = state.extra as Building;
-          return _slidePage(
-            state,
-            BlockInspectionsScreen(building: building),
-          );
+          return _slidePage(state, BlockInspectionsScreen(building: building));
         },
       ),
       GoRoute(
@@ -93,10 +94,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           return _slidePage(state, InspectionScreen(asset: asset));
         },
       ),
+      GoRoute(
+        path: '/scan',
+        name: 'scan',
+        pageBuilder: (context, state) =>
+            _slidePage(state, const QrScanScreen()),
+      ),
+      GoRoute(
+        path: '/about',
+        name: 'about',
+        pageBuilder: (context, state) => _slidePage(state, const AboutScreen()),
+      ),
     ],
     errorBuilder: (context, state) => Scaffold(
-      body: Center(
-          child: Text('Page not found: ${state.matchedLocation}')),
+      body: Center(child: Text('Page not found: ${state.matchedLocation}')),
     ),
   );
 });
@@ -113,9 +124,7 @@ CustomTransitionPage<void> _slidePage(GoRouterState state, Widget child) {
       final slide = Tween<Offset>(
         begin: const Offset(1, 0),
         end: Offset.zero,
-      ).animate(
-        CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-      );
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeInOut));
       return SlideTransition(position: slide, child: child);
     },
   );

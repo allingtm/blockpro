@@ -20,93 +20,92 @@ class AboutScreen extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final tokens = context.tokens;
 
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: BlockProLogo(size: 96, color: tokens.brandIcon),
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: Text(
-                'BlockPro',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: tokens.textStrong,
+    return Scaffold(
+      appBar: const BlockProAppBar(title: 'About'),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(child: BlockProLogo(size: 96, color: tokens.brandIcon)),
+              const SizedBox(height: 20),
+              Center(
+                child: Text(
+                  'BlockPro',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: tokens.textStrong,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Center(
-              child: Text(
-                'Building management made simple',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: tokens.textMuted,
+              const SizedBox(height: 6),
+              Center(
+                child: Text(
+                  'Building management made simple',
+                  style: TextStyle(fontSize: 14, color: tokens.textMuted),
                 ),
               ),
-            ),
-            const SizedBox(height: 36),
-            _SectionLabel('Appearance'),
-            const SizedBox(height: 10),
-            SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
+              const SizedBox(height: 36),
+              _SectionLabel('Appearance'),
+              const SizedBox(height: 10),
+              SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
                     value: ThemeMode.system,
                     label: Text('System'),
-                    icon: Icon(Icons.brightness_auto)),
-                ButtonSegment(
+                    icon: Icon(Icons.brightness_auto),
+                  ),
+                  ButtonSegment(
                     value: ThemeMode.light,
                     label: Text('Light'),
-                    icon: Icon(Icons.light_mode)),
-                ButtonSegment(
+                    icon: Icon(Icons.light_mode),
+                  ),
+                  ButtonSegment(
                     value: ThemeMode.dark,
                     label: Text('Dark'),
-                    icon: Icon(Icons.dark_mode)),
-              ],
-              selected: {themeMode},
-              onSelectionChanged: (selected) {
-                ref
-                    .read(brightnessModeProvider.notifier)
-                    .set(selected.first);
-              },
-            ),
-            const SizedBox(height: 32),
-            _SectionLabel('App version'),
-            const SizedBox(height: 8),
-            FutureBuilder<PackageInfo>(
-              future: PackageInfo.fromPlatform(),
-              builder: (context, snapshot) {
-                final version = snapshot.data?.version ?? '...';
-                final build = snapshot.data?.buildNumber ?? '';
-                return Text(
-                  'v$version${build.isNotEmpty ? ' ($build)' : ''}',
-                  style: const TextStyle(fontSize: 14),
-                );
-              },
-            ),
-            const SizedBox(height: 32),
-            OutlinedButton.icon(
-              onPressed: () => _signOut(context, ref),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: colors.error,
-                side: BorderSide(color: colors.error),
-                minimumSize: const Size.fromHeight(48),
+                    icon: Icon(Icons.dark_mode),
+                  ),
+                ],
+                selected: {themeMode},
+                onSelectionChanged: (selected) {
+                  ref.read(brightnessModeProvider.notifier).set(selected.first);
+                },
               ),
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out'),
-            ),
-            if (kDebugMode) ...[
-              const SizedBox(height: 28),
-              _SectionLabel('Debug'),
+              const SizedBox(height: 32),
+              _SectionLabel('App version'),
               const SizedBox(height: 8),
-              const _DebugAuditButton(),
+              FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snapshot) {
+                  final version = snapshot.data?.version ?? '...';
+                  final build = snapshot.data?.buildNumber ?? '';
+                  return Text(
+                    'v$version${build.isNotEmpty ? ' ($build)' : ''}',
+                    style: const TextStyle(fontSize: 14),
+                  );
+                },
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton.icon(
+                onPressed: () => _signOut(context, ref),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colors.error,
+                  side: BorderSide(color: colors.error),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                icon: const Icon(Icons.logout),
+                label: const Text('Sign Out'),
+              ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 28),
+                _SectionLabel('Debug'),
+                const SizedBox(height: 8),
+                const _DebugAuditButton(),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -121,8 +120,8 @@ class AboutScreen extends ConsumerWidget {
     if (!context.mounted) return;
     final message = pending > 0
         ? 'You have $pending completed inspection${pending == 1 ? '' : 's'} '
-            "that haven't been uploaded yet. Signing out will discard "
-            '${pending == 1 ? 'it' : 'them'}. Continue?'
+              "that haven't been uploaded yet. Signing out will discard "
+              '${pending == 1 ? 'it' : 'them'}. Continue?'
         : 'Are you sure you want to sign out?';
 
     final proceed = await showDialog<bool>(
@@ -132,12 +131,15 @@ class AboutScreen extends ConsumerWidget {
         content: Text(message),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(pending > 0 ? 'Sign Out & Discard' : 'Sign Out',
-                style: TextStyle(color: colors.error)),
+            child: Text(
+              pending > 0 ? 'Sign Out & Discard' : 'Sign Out',
+              style: TextStyle(color: colors.error),
+            ),
           ),
         ],
       ),
@@ -165,18 +167,22 @@ class _DebugAuditButtonState extends ConsumerState<_DebugAuditButton> {
   Future<void> _run() async {
     setState(() => _running = true);
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Audit sync started — re-fetching ALL checklists…'),
-    ));
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Audit sync started — re-fetching ALL checklists…'),
+      ),
+    );
     try {
-      await ref
-          .read(syncRepositoryProvider)
-          .syncAll(forceFullChecklists: true);
+      await ref.read(syncRepositoryProvider).syncAll(forceFullChecklists: true);
       if (!mounted) return;
-      messenger.showSnackBar(const SnackBar(
-        content: Text('Audit sync complete — see the data_audit/ folder in '
-            'the app documents directory.'),
-      ));
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Audit sync complete — see the data_audit/ folder in '
+            'the app documents directory.',
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Audit sync failed: $e')));

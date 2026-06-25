@@ -77,17 +77,8 @@ Future<void> replayCompletion({
   }
 
   // 2) Submit the completed inspection.
-  // TEMPORARY: targeting the `/initialize` path so Bubble's "Detect request
-  // data" re-learns the payload schema (each answer now carries `question_id`,
-  // `chapter_id` and a `photo_ids` list; `remedial_type` is no longer sent).
-  // REVERT to 'app_completed-inspection' once Bubble has detected the new
-  // fields — /initialize runs the workflow in detection mode and must not be
-  // the production completion path. Note: Bubble only learns `photo_ids` from a
-  // real submission whose question actually carried a photo. The server's
-  // returned dates (step 3) come from the production endpoint's "Return data
-  // from API" step, so they are only honoured once this is reverted.
   final response = await api.authenticatedPost(
-      'app_completed-inspection/initialize',
+      'app_completed-inspection',
       body: buildCompletionBody(entry, uploaded));
 
   // 3) Success — same cleanup the live submit performed. Use the enqueue time
