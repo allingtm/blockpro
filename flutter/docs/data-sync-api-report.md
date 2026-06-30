@@ -139,7 +139,7 @@ own per-screen trigger. The per-endpoint subsections below add only the
 ### `syncAll` (endpoints 2 → 3 → 4 together)
 | Use case | Trigger | Notes |
 |----------|---------|-------|
-| **First login / initial download** | [`initialSyncNotifierProvider.runSync`](flutter/lib/providers/initial_sync_provider.dart#L72) on the initial-sync screen | Shown when the DB has no buildings ([`needsInitialSyncProvider`](flutter/lib/providers/initial_sync_provider.dart#L131)). All assets are new → all checklists fetched. |
+| **First login / initial download** | [`initialSyncNotifierProvider.runSync`](flutter/lib/providers/initial_sync_provider.dart) in the background from the Blocks list | Started when the DB has no buildings ([`needsInitialSyncProvider`](flutter/lib/providers/initial_sync_provider.dart)); the list shows immediately and each building row carries a loading bar until its own assets land, then unlocks. All assets are new → all checklists fetched. |
 | **Manual full refresh** | [`refreshNotifierProvider.run`](flutter/lib/providers/refresh_sync_provider.dart#L98) from the refresh dialog on the Blocks list | **Wipes the whole DB first**, then re-downloads everything; re-asserts queued completions and drains the outbox afterward. Cancellable. |
 | **Debug data audit** | [`_DebugAuditButtonState._run`](flutter/lib/screens/about_screen.dart#L176) on the About screen | `syncAll(forceFullChecklists: true)` — re-fetches *every* checklist and dumps an audit report. |
 

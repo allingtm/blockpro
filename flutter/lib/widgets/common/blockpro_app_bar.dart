@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/connectivity_provider.dart';
+import '../../providers/initial_sync_provider.dart';
 import '../../providers/outbox_provider.dart';
 import '../../theme/app_palettes.dart';
 import 'blockpro_logo.dart';
@@ -32,6 +33,8 @@ class BlockProAppBar extends ConsumerWidget implements PreferredSizeWidget {
     final isOfflineAsync = ref.watch(isOfflineProvider);
     final isOffline = isOfflineAsync.valueOrNull ?? false;
     final pendingUploads = ref.watch(pendingCountProvider);
+    final isSyncing =
+        ref.watch(initialSyncNotifierProvider.select((s) => s.isSyncing));
     final canPop = ModalRoute.of(context)?.canPop ?? false;
 
     return AppBar(
@@ -109,6 +112,7 @@ class BlockProAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   color: Colors.white70, size: 20),
             ),
           ),
+        if (isSyncing) const _PulsingSyncIndicator(),
         // ignore: use_null_aware_elements
         if (trailing != null) trailing!,
         // Reserve right-edge space so the centred title aligns with the
@@ -116,6 +120,57 @@ class BlockProAppBar extends ConsumerWidget implements PreferredSizeWidget {
         if (!canPop && trailing == null && !isOffline && pendingUploads == 0)
           const SizedBox(width: 56),
       ],
+    );
+  }
+}
+
+/// A cloud-download icon that gently pulses (fades in and out) while the
+/// background sync is downloading data — calmer than a spinner and consistent
+/// with the app bar's other cloud status icons (upload / offline). Shown on
+/// every screen via [BlockProAppBar] while a sync is running.
+class _PulsingSyncIndicator extends StatefulWidget {
+  const _PulsingSyncIndicator();
+
+  @override
+  State<_PulsingSyncIndicator> createState() => _PulsingSyncIndicatorState();
+}
+
+class _PulsingSyncIndicatorState extends State<_PulsingSyncIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.35,
+    end: 1.0,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Downloading data…',
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: FadeTransition(
+            opacity: _opacity,
+            child: const Icon(
+              Icons.cloud_download_outlined,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

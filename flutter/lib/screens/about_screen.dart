@@ -145,8 +145,15 @@ class AboutScreen extends ConsumerWidget {
       ),
     );
     if (proceed != true) return;
+    // Stop the background initial sync first, BEFORE the token is cleared and the
+    // DB is wiped, so it doesn't keep firing checklist requests with a null token
+    // (and writing rows into the DB we're about to wipe).
+    ref.read(initialSyncNotifierProvider.notifier).cancel();
     await ref.read(authRepositoryProvider).signOut();
+    // The DB is wiped on sign-out; reset both the "needs sync" check and the
+    // sync coordinator so the next user gets a fresh full sync on the empty DB.
     ref.invalidate(needsInitialSyncProvider);
+    ref.invalidate(initialSyncNotifierProvider);
   }
 }
 

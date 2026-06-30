@@ -149,7 +149,7 @@ subject to the gate (§3) and connectivity (§5)."
 
 | # | Trigger | Scope | Gate applies? | Notes |
 |---|---------|-------|---------------|-------|
-| 1 | **Cold start / first login** | Full | No (forced) | Already handled: `needsInitialSyncProvider` → full `syncAll` on the initial-sync screen when the DB is empty. |
+| 1 | **Cold start / first login** | Full | No (forced) | Already handled: `needsInitialSyncProvider` → full background `syncAll` from the Blocks list (per-building loading bars) when the DB is empty. |
 | 2 | **Subsequent login (token still valid)** | Full | Yes | Background refresh after auth; don't block the home screen on it. |
 | 3 | **App resumed from background** | Full | Yes (+ debounce) | Only if `now - backgroundedAt` is non-trivial *and* the full-sync gate allows. This is where the freshness window earns its keep. |
 | 4 | **Open the Blocks list (home)** | Full (throttled) | Yes | Refresh the estate in the background; the list keeps showing cache meanwhile. |

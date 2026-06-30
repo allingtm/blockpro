@@ -59,7 +59,7 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
         badgeCount: badge?.red,
       ),
       body: chaptersAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const _LoadingBody(message: 'Downloading checklist…'),
         error: (error, _) => _ErrorBody(
           message: getErrorMessage(error),
           onRetry: () => ref.invalidate(
@@ -156,6 +156,28 @@ class _InspectionScreenState extends ConsumerState<InspectionScreen> {
             queuedStatus: queued?.status,
           );
         },
+      ),
+    );
+  }
+}
+
+class _LoadingBody extends StatelessWidget {
+  const _LoadingBody({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(message, textAlign: TextAlign.center),
+          ],
+        ),
       ),
     );
   }

@@ -1,0 +1,8 @@
+@page { margin: 16mm; }
+.markdown-body p img {
+  border: 1px solid #d7dde3;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.10);
+}
+.markdown-body p { page-break-inside: avoid; }
+.markdown-body h2 { margin-top: 28px; }

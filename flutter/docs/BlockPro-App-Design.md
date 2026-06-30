@@ -57,21 +57,26 @@ This document captures what has been built, what needs to change to align with t
 
 ### 3.1 Initial Sync (first login)
 
-After authentication, the app downloads all data before showing the home screen:
+After authentication, the app lands directly on the Blocks list and runs the
+download in the background:
 
 ```
-Login → SyncRepository.syncAll() → Home
-         ├── Phase 1: syncBuildings()
-         ├── Phase 2: syncAssetsForBuilding() × N buildings
-         └── Phase 3: syncChecklistForAsset() × N assets (max 5 concurrent)
+Login → Home (Blocks list) → initialSyncNotifierProvider.runSync() → SyncRepository.syncAll()
+         ├── Phase 1: syncBuildings()                       → list appears as soon as these land
+         ├── Phase 2: syncAssetsForBuilding() × N buildings  → blocks become tappable after this
+         └── Phase 3: syncChecklistForAsset() × N assets (max 5 concurrent, background)
 ```
 
-Progress is displayed on `InitialSyncScreen` with step indicators.
+Loading is shown per building: each row carries an indeterminate loading bar
+along its bottom edge and stays non-tappable until *that building's* assets land,
+then resolves to its badge and becomes tappable. Because assets are fetched per
+building, rows resolve independently. Checklists keep downloading silently in the
+background and don't gate the rows.
 
 ### 3.2 Subsequent Access
 
 Data is served from SQLite. Background syncs are triggered:
-- **Buildings:** On `BuildingsList` mount (if DB is empty, sync first)
+- **Buildings:** First launch (empty DB) runs the full background sync from the Blocks list; subsequent launches serve cache with no auto-sync
 - **Assets:** On `BuildingDetailScreen` mount (always triggers sync)
 - **Checklists:** On `AssetDetailScreen` / `InspectionScreen` watch (always triggers sync)
 
@@ -98,7 +103,6 @@ Buildings List
 |------|--------|-------------|
 | `/` | WelcomeScreen | — |
 | `/login` | LoginScreen | — |
-| `/initial-sync` | InitialSyncScreen | — |
 | `/home` | HomeScreen (BuildingsList tab) | — |
 | `/building/:id` | BuildingDetailScreen | building name |
 | `/asset/:id` | AssetDetailScreen | Asset object |

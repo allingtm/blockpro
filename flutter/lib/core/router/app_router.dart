@@ -4,21 +4,18 @@ import 'package:go_router/go_router.dart';
 import '../../models/asset.dart';
 import '../../models/building.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/initial_sync_provider.dart';
 import '../../screens/about_screen.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/block_inspections_screen.dart';
 import '../../screens/home_screen.dart';
-import '../../screens/initial_sync_screen.dart';
 import '../../screens/inspection_screen.dart';
 import '../../screens/qr_scan_screen.dart';
 import '../../screens/welcome_screen.dart';
 
-/// Notifier that triggers GoRouter refreshes when auth or sync state changes.
+/// Notifier that triggers GoRouter refreshes when auth state changes.
 class _RouterRefreshNotifier extends ChangeNotifier {
   _RouterRefreshNotifier(Ref ref) {
     ref.listen(isAuthenticatedProvider, (prev, next) => notifyListeners());
-    ref.listen(needsInitialSyncProvider, (prev, next) => notifyListeners());
   }
 }
 
@@ -29,22 +26,19 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refreshNotifier,
     redirect: (context, state) {
       final isAuth = ref.read(isAuthenticatedProvider);
-      final syncAsync = ref.read(needsInitialSyncProvider);
-      final needsSync = syncAsync.valueOrNull ?? true;
       final location = state.matchedLocation;
 
       debugPrint(
-        '── ROUTER REDIRECT ── location=$location '
-        'isAuth=$isAuth needsSync=$needsSync '
-        'syncAsync=$syncAsync',
+        '── ROUTER REDIRECT ── location=$location isAuth=$isAuth',
       );
 
       final isGoingToAuth = location == '/login' || location == '/';
 
-      // Default: authenticated → /home or /initial-sync, unauthenticated → /
+      // Default: authenticated → /home (the blocks list drives its own
+      // background sync), unauthenticated → / (welcome).
       if (location == '' || location == '/') {
         if (!isAuth) return '/';
-        return needsSync ? '/initial-sync' : '/home';
+        return '/home';
       }
 
       // Redirect to login for protected routes when not authenticated
@@ -52,7 +46,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       // Redirect authenticated users away from auth pages
       if (isAuth && isGoingToAuth && location != '/') {
-        return needsSync ? '/initial-sync' : '/home';
+        return '/home';
       }
 
       return null;
@@ -67,11 +61,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/login',
         name: 'login',
         builder: (context, state) => const LoginScreen(),
-      ),
-      GoRoute(
-        path: '/initial-sync',
-        name: 'initial-sync',
-        builder: (context, state) => const InitialSyncScreen(),
       ),
       GoRoute(
         path: '/home',

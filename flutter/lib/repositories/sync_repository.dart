@@ -258,8 +258,13 @@ class SyncRepository {
   /// Set [force] to `true` to bypass the incremental check and always fetch.
   /// By default, the method is a no-op if the asset's `checklistLastModified`
   /// and `lastSyncedAt` suggest the local copy is already current.
+  ///
+  /// By default failures are swallowed (logged only). Set [rethrowOnError] to
+  /// `true` for on-demand fetches (e.g. opening the inspection screen) that need
+  /// to distinguish a genuine failure — to surface a Retry — from an empty
+  /// checklist.
   Future<void> syncChecklistForAsset(String assetId,
-      {bool force = false}) async {
+      {bool force = false, bool rethrowOnError = false}) async {
     try {
       if (!force && await _isChecklistCacheCurrent(assetId)) {
         debugPrint('── SYNC CHECKLIST (asset: $assetId) SKIPPED (up to date) ──');
@@ -316,6 +321,7 @@ class SyncRepository {
       debugPrint('── SYNC CHECKLIST COMPLETE ──');
     } catch (e) {
       debugPrint('syncChecklistForAsset($assetId) failed: $e');
+      if (rethrowOnError) rethrow;
     }
   }
 }

@@ -236,7 +236,7 @@ Phase 3: app_fetch_checklist_single ──> one call per STALE asset (parallel, 
                                         upsert chapters + questions tables
 ```
 
-The initial sync screen ([initial_sync_screen.dart](../lib/screens/initial_sync_screen.dart)) shows progress per phase with a retry button on failure. All UI reads from the local SQLite (Drift) database; the API is used only to populate/refresh that cache.
+The initial sync runs in the background on the Blocks list ([blocks_list_screen.dart](../lib/screens/blocks_list_screen.dart)): the list appears as soon as buildings land, and each building row shows an indeterminate loading bar along its bottom edge until that building's assets arrive, at which point the row resolves to its badge and becomes tappable. A SnackBar with a retry action appears if the sync fails. All UI reads from the local SQLite (Drift) database; the API is used only to populate/refresh that cache.
 
 ---
 

@@ -325,7 +325,7 @@ Phase 3: app_fetch_checklist_single  ──>  one call per STALE asset (parallel
                                            upsert into chapters + questions tables
 ```
 
-The initial sync screen (`lib/screens/initial_sync_screen.dart`) shows progress through each phase. A retry button is available if any phase fails.
+The initial sync runs in the background on the Blocks list (`lib/screens/blocks_list_screen.dart`), surfacing progress per building: each row shows an indeterminate loading bar until that building's assets arrive, then resolves to its badge and becomes tappable. A retry SnackBar is shown if the sync fails.
 
 ### Data Storage
 

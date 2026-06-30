@@ -6,6 +6,7 @@ import '../database/database.dart';
 import '../models/building.dart';
 import '../repositories/sync_repository.dart';
 import 'database_provider.dart';
+import 'drafts_provider.dart';
 import 'sync_provider.dart';
 
 const _pageSize = 20;
@@ -61,21 +62,17 @@ class PaginatedBuildingsNotifier
     // Load first page from SQLite immediately (may be empty on first launch).
     await _loadPage(0);
 
-    // Start listening for DB changes so the UI auto-updates after sync.
+    // Start listening for DB changes so the UI auto-updates as the background
+    // sync upserts rows. The first-launch sync is owned by
+    // [initialSyncNotifierProvider] (which runs the full syncAll); this notifier
+    // just reflects whatever lands in SQLite, so it no longer self-triggers a
+    // buildings fetch here (that would double-hit app_fetchbuildings).
     _subscription = _db.buildingsDao
         .watchBuildingsPaginated(_pageSize, 0)
         .listen((_) {
       // When the DB changes, reload current window.
       _reloadCurrentWindow();
     });
-
-    // Only trigger background sync if the DB is empty (first launch without
-    // going through the initial sync screen). If the sync screen already
-    // populated the DB, skip to avoid a redundant API call.
-    final count = await _db.buildingsDao.countBuildings();
-    if (count == 0) {
-      _triggerSync();
-    }
   }
 
   Future<void> _triggerSync() async {
@@ -157,6 +154,19 @@ final buildingsNotifierProvider = StateNotifierProvider<
 
 /// Current text in the building-list search box ('' = not searching).
 final buildingSearchQueryProvider = StateProvider<String>((ref) => '');
+
+/// Building IDs that have at least one asset row in SQLite — i.e. their assets
+/// phase has landed during the background sync. The blocks list uses this to
+/// resolve each row from its loading bar to its badge independently as that
+/// building's assets download. Reuses the single watched stream behind
+/// [assetBuildingPairsProvider] (also used for the draft roll-up), so it adds no
+/// extra DB subscription. Each building's assets are upserted in one atomic
+/// batch, so a building appears here exactly when *all* its assets are in.
+final buildingsWithAssetsProvider = Provider<Set<String>>((ref) {
+  final pairs = ref.watch(assetBuildingPairsProvider).valueOrNull ??
+      const <({String assetId, String buildingId})>[];
+  return {for (final p in pairs) p.buildingId};
+});
 
 /// Buildings matching the active search query (empty list when not searching).
 final buildingSearchResultsProvider =
