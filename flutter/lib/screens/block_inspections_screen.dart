@@ -9,9 +9,11 @@ import '../models/building.dart';
 import '../models/outbox_entry.dart';
 import '../providers/assets_provider.dart';
 import '../providers/building_badges_provider.dart';
+import '../providers/checklist_provider.dart';
 import '../providers/drafts_provider.dart';
 import '../providers/outbox_drain_provider.dart';
 import '../providers/outbox_provider.dart';
+import '../theme/app_palettes.dart';
 import '../theme/app_theme_tokens.dart';
 import '../utils/asset_status.dart';
 import '../utils/date_format.dart';
@@ -183,13 +185,52 @@ class _InspectionCard extends ConsumerWidget {
             const <String>{})
         .contains(asset.id);
 
+    // A checklist must be downloaded before its inspection can be opened. Until
+    // it is, the card downloads on tap (it does *not* open); once downloaded the
+    // tap opens the inspection. `dbDownloaded` is null on the DB stream's first
+    // frame — treat that as "still resolving" so an already-downloaded card never
+    // flashes a Download affordance.
+    final dbDownloaded =
+        ref.watch(checklistDownloadedProvider(asset.id)).valueOrNull;
+    final dlStatus = ref.watch(checklistDownloadControllerProvider)[asset.id];
+    final isDownloaded = (dbDownloaded ?? false) ||
+        dlStatus == ChecklistDownloadStatus.downloaded;
+    final isDownloading = dlStatus == ChecklistDownloadStatus.downloading;
+    final isResolving = dbDownloaded == null && dlStatus == null;
+    final isError = dlStatus == ChecklistDownloadStatus.error;
+
+    // Surface a download failure (offline/auth) as a SnackBar for this asset.
+    ref.listen<Map<String, ChecklistDownloadStatus>>(
+      checklistDownloadControllerProvider,
+      (prev, next) {
+        final became = prev?[asset.id] != ChecklistDownloadStatus.error &&
+            next[asset.id] == ChecklistDownloadStatus.error;
+        if (became) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(const SnackBar(
+              content: Text(
+                  'Couldn’t download checklist — check your connection and try again.'),
+            ));
+        }
+      },
+    );
+
+    final VoidCallback? onTap;
+    if (isDownloaded) {
+      onTap = () => context.push('/inspection/${asset.id}', extra: asset);
+    } else if (isDownloading || isResolving) {
+      onTap = null;
+    } else {
+      onTap = () => ref
+          .read(checklistDownloadControllerProvider.notifier)
+          .download(asset.id);
+    }
+
     return StripedCard(
       stripeColor: stripe,
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
-      onTap: () => context.push(
-        '/inspection/${asset.id}',
-        extra: asset,
-      ),
+      onTap: onTap,
       child: Row(
         children: [
           Expanded(
@@ -251,9 +292,55 @@ class _InspectionCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Icon(Icons.chevron_right, color: tokens.textFaint),
+          _trailing(
+            tokens: tokens,
+            isDownloaded: isDownloaded,
+            isBusy: isDownloading || isResolving,
+            isError: isError,
+          ),
         ],
       ),
+    );
+  }
+
+  /// Trailing affordance: a chevron once downloaded, a spinner while a download
+  /// is in flight (or the DB state is still resolving), and a Download/Retry
+  /// prompt otherwise — making "must download before entering" visible.
+  Widget _trailing({
+    required AppThemeTokens tokens,
+    required bool isDownloaded,
+    required bool isBusy,
+    required bool isError,
+  }) {
+    if (isDownloaded) {
+      return Icon(Icons.chevron_right, color: tokens.textFaint);
+    }
+    if (isBusy) {
+      return SizedBox(
+        width: 20,
+        height: 20,
+        child:
+            CircularProgressIndicator(strokeWidth: 2, color: tokens.textFaint),
+      );
+    }
+    final color = isError ? kStatusRed : kActionBlue;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isError ? Icons.error_outline : Icons.download_for_offline_outlined,
+          color: color,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          isError ? 'Retry' : 'Download',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 

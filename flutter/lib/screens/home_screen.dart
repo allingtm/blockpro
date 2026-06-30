@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../providers/checklist_provider.dart';
 import '../providers/initial_sync_provider.dart';
 import '../widgets/common/widgets.dart';
 import 'blocks_list_screen.dart';
@@ -17,6 +18,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _onRefreshPressed() async {
     final confirmed = await confirmRefreshDialog(context);
     if (confirmed != true || !mounted) return;
+    // The wipe clears every checklist; drop the per-checklist download markers
+    // so they can't outlive their data and falsely mark a card as downloaded.
+    ref.invalidate(checklistDownloadControllerProvider);
     // Reload in the background like app startup (per-building bars + pulsing
     // cloud) rather than a blocking progress dialog.
     ref.read(initialSyncNotifierProvider.notifier).refresh();

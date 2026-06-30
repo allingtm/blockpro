@@ -6,6 +6,7 @@ import '../models/building.dart';
 import '../models/outbox_entry.dart';
 import '../providers/building_badges_provider.dart';
 import '../providers/buildings_provider.dart';
+import '../providers/checklist_provider.dart';
 import '../providers/drafts_provider.dart';
 import '../providers/initial_sync_provider.dart';
 import '../providers/outbox_provider.dart';
@@ -102,8 +103,12 @@ class _BlocksListScreenState extends ConsumerState<BlocksListScreen> {
       return _EmptyState(
         // Reload everything in the background (wipe + re-download), same as
         // startup — no progress dialog.
-        onReload: () =>
-            ref.read(initialSyncNotifierProvider.notifier).refresh(),
+        onReload: () {
+          // The wipe clears every checklist; drop per-checklist download markers
+          // so a stale one can't falsely mark a card as downloaded.
+          ref.invalidate(checklistDownloadControllerProvider);
+          ref.read(initialSyncNotifierProvider.notifier).refresh();
+        },
       );
     }
 
